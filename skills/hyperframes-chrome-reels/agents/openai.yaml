@@ -1,0 +1,4 @@
+interface:
+  display_name: "HyperFrames Chrome Reels"
+  short_description: "Build chrome-and-glass explanatory reels"
+  default_prompt: "Use $hyperframes-chrome-reels to build a reel in the studied chrome, charcoal, and green diagram style."

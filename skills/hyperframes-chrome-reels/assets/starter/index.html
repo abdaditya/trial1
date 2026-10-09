@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080,height=1920">
+<title>Chrome transaction — editable motion study</title>
+<script src="./gsap.min.js"></script>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#1d1d1d;color:#f4f4ef;font-family:system-ui,sans-serif}
+#root{position:relative;width:100%;height:100%;overflow:hidden}.clip{position:absolute;inset:0}.backdrop{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 57%,#26332c 0%,#1d211f 30%,#1d1d1d 63%)}
+.eyebrow{position:absolute;top:232px;width:100%;text-align:center;font-size:34px;letter-spacing:1px}.headline{position:absolute;top:405px;left:140px;width:800px;text-align:center;font-size:64px;line-height:1.12;font-weight:450}.headline strong{font-weight:650}.camera{position:absolute;inset:0;transform-origin:540px 1050px}.diagram{position:absolute;width:1080px;height:1920px;inset:0}.label{font-size:32px;fill:#f4f4ef;text-anchor:middle}.small{font-size:28px}.closing{position:absolute;top:1440px;left:180px;width:720px;font-size:39px;line-height:1.2;text-align:center}.note{position:absolute;top:1685px;left:190px;width:700px;text-align:center;font-size:24px;color:#adb7b0}
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="chrome-study" data-width="1080" data-height="1920" data-duration="10">
+<div class="backdrop"></div>
+<section id="diagram-scene" class="clip" data-start="0" data-duration="10" data-track-index="1">
+<div class="headline">A transaction has<br><strong>a hidden journey.</strong></div>
+<div class="camera">
+<svg class="diagram" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg" aria-label="A transaction travels between two people through three intermediary nodes.">
+<defs>
+<radialGradient id="headSilver" cx="35%" cy="20%" r="79%"><stop stop-color="#ffffff"/><stop offset=".19" stop-color="#bbc4bf"/><stop offset=".39" stop-color="#616964"/><stop offset=".64" stop-color="#202623"/><stop offset=".83" stop-color="#090d0b"/><stop offset="1" stop-color="#bec8c1"/></radialGradient>
+<radialGradient id="headGreen" cx="35%" cy="20%" r="79%"><stop stop-color="#edfff4"/><stop offset=".2" stop-color="#a5ddbb"/><stop offset=".48" stop-color="#395849"/><stop offset=".8" stop-color="#101b15"/><stop offset="1" stop-color="#a0cdb0"/></radialGradient>
+<linearGradient id="bodySilver" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e7ece9"/><stop offset=".2" stop-color="#7b847e"/><stop offset=".65" stop-color="#282d29"/><stop offset="1" stop-color="#1d211f" stop-opacity="0"/></linearGradient>
+<linearGradient id="bodyGreen" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#b8f0ce"/><stop offset=".2" stop-color="#658a73"/><stop offset=".65" stop-color="#293b30"/><stop offset="1" stop-color="#1d211f" stop-opacity="0"/></linearGradient>
+<linearGradient id="chrome" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fafefb"/><stop offset=".18" stop-color="#9ea8a1"/><stop offset=".4" stop-color="#38423b"/><stop offset=".55" stop-color="#101913"/><stop offset=".77" stop-color="#b9c8bf"/><stop offset=".87" stop-color="#fbfffc"/><stop offset="1" stop-color="#556b5d"/></linearGradient>
+<radialGradient id="cavity" cx="52%" cy="40%" r="65%"><stop stop-color="#17271d"/><stop offset=".68" stop-color="#132118"/><stop offset=".89" stop-color="#456d52"/><stop offset="1" stop-color="#d3eadd"/></radialGradient>
+<radialGradient id="floor"><stop stop-color="#b8f7d0" stop-opacity=".30"/><stop offset="1" stop-color="#9ed9b4" stop-opacity="0"/></radialGradient>
+</defs>
+<g id="token"><ellipse cx="540" cy="981" rx="178" ry="32" fill="url(#floor)"/><circle cx="540" cy="810" r="144" fill="url(#chrome)"/><circle cx="540" cy="810" r="124" fill="#0f1913"/><circle cx="540" cy="810" r="117" fill="url(#cavity)" stroke="#e5f6ec" stroke-opacity=".36" stroke-width="2"/><text x="540" y="819" class="label">Payment</text></g>
+<g id="seller"><circle cx="230" cy="1065" r="45" fill="url(#headSilver)"/><path d="M125 1230 C130 1117 330 1117 335 1230 Z" fill="url(#bodySilver)"/><text x="230" y="1290" class="label">Seller</text></g>
+<g id="buyer"><circle cx="850" cy="1065" r="45" fill="url(#headGreen)"/><path d="M745 1230 C750 1117 950 1117 955 1230 Z" fill="url(#bodyGreen)"/><text x="850" y="1290" class="label">Buyer</text></g>
+<path id="route" d="M335 1120 L745 1120" fill="none" stroke="#a0b3a7" stroke-width="2"/>
+<g id="nodes"><circle class="node" cx="420" cy="1120" r="7" fill="#edf7f0"/><circle class="node" cx="540" cy="1120" r="7" fill="#edf7f0"/><circle class="node" cx="660" cy="1120" r="7" fill="#edf7f0"/></g>
+<g id="packet"><circle r="17" fill="#a7e8bf" fill-opacity=".12"/><circle r="6" fill="#b8ffcf"/></g>
+<text id="route-label" x="540" y="1190" class="label small">Checks · routing · settlement</text>
+</svg>
+</div>
+<div class="closing">Show the mechanism.<br>Keep the story clear.</div>
+<div class="note">Original style study · illustrative process</div>
+</section>
+<section class="clip" id="caption-one" data-start="0.3" data-duration="2.7" data-track-index="2"><div class="eyebrow">Follow the money</div></section>
+<section class="clip" id="caption-two" data-start="3" data-duration="3.4" data-track-index="2"><div class="eyebrow">Reveal the steps</div></section>
+<section class="clip" id="caption-three" data-start="6.4" data-duration="3.6" data-track-index="2"><div class="eyebrow">Make the system visible</div></section>
+</div>
+<script>
+const tl=gsap.timeline({paused:true});
+const route=document.querySelector('#route');
+const routeLength=route.getTotalLength();
+gsap.set(route,{strokeDasharray:routeLength,strokeDashoffset:routeLength});
+gsap.set('#packet',{x:335,y:1120,opacity:0});
+tl.fromTo('.headline',{opacity:0,y:22},{opacity:1,y:0,duration:.65,ease:'power3.out'},.1);
+tl.fromTo('#token',{opacity:0,scale:.88,transformOrigin:'540px 810px'},{opacity:1,scale:1,duration:.8,ease:'power3.out'},.35);
+tl.fromTo('#seller',{opacity:0,x:160},{opacity:1,x:0,duration:1,ease:'power2.inOut'},1.4);
+tl.fromTo('#buyer',{opacity:0,x:-160},{opacity:1,x:0,duration:1,ease:'power2.inOut'},1.4);
+tl.fromTo('.camera',{scale:1.1,y:30},{scale:1,y:0,duration:1,ease:'power2.inOut'},2.4);
+tl.to(route,{strokeDashoffset:0,duration:1.4,ease:'none'},2.9);
+tl.fromTo('.node',{opacity:0,scale:0,transformOrigin:'50% 50%'},{opacity:1,scale:1,duration:.25,stagger:.35,ease:'power2.out'},3.25);
+tl.fromTo('#route-label',{opacity:0},{opacity:1,duration:.5},4.5);
+tl.to('#packet',{opacity:1,duration:.15},4.6);
+tl.to('#packet',{x:745,duration:1.8,ease:'none'},4.75);
+tl.to('#packet',{opacity:0,duration:.2},6.55);
+tl.fromTo('.closing',{opacity:0,y:20},{opacity:1,y:0,duration:.6,ease:'power3.out'},6.6);
+tl.fromTo('.note',{opacity:0},{opacity:1,duration:.5},7.4);
+window.__timelines=window.__timelines||{};
+window.__timelines['chrome-study']=tl;
+</script>
+</body></html>
