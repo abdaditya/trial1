@@ -19,6 +19,8 @@ page.on("pageerror", e => { console.error("[page error]", e.message); process.ex
 await page.goto("file://" + path.join(here, "index.html"));
 console.log("ready", await page.evaluate(() => window.ready));
 const SAFE = await page.evaluate(() => window.SAFE);
+mkdirSync(path.join(here, "out"), { recursive: true });
+writeFileSync(path.join(here, "out/cues.json"), JSON.stringify(await page.evaluate(() => window.CUES), null, 1));
 
 const fails = [];
 function qa(t, boxes) {
@@ -26,6 +28,10 @@ function qa(t, boxes) {
   for (const b of vis) {
     if (b.x < SAFE.x0 || b.x + b.w > SAFE.x1 || b.y < SAFE.y0 || b.y + b.h > SAFE.y1)
       fails.push({ t, kind: "outside-safe-zone", id: b.id, box: b });
+  }
+  for (const b of boxes.filter(b => b.a > 0.6)) {
+    if (b.contrast < 7) fails.push({ t, kind: "low-contrast", id: b.id, contrast: b.contrast });
+    if (b.size < 36) fails.push({ t, kind: "text-too-small", id: b.id, size: b.size });
   }
   for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
     const a = vis[i], b = vis[j], gap = 16; // boxes must keep a 16 px gap
