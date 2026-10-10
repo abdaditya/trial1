@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Noise to image — style frames</title>
+<style>
+  @font-face { font-family: "Anton"; src: url(fonts/anton.woff2) format("woff2"); }
+  @font-face { font-family: "Mea Culpa"; src: url(fonts/meaculpa.woff2) format("woff2"); }
+  @font-face { font-family: "Inter Tight"; src: url(fonts/inter400.woff2) format("woff2"); font-weight: 400; }
+  @font-face { font-family: "Inter Tight"; src: url(fonts/inter600.woff2) format("woff2"); font-weight: 600; }
+  @font-face { font-family: "Inter Tight"; src: url(fonts/inter800.woff2) format("woff2"); font-weight: 800; }
+  html, body { margin: 0; background: #000; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Style frames for the new look: poster typography (Inter Tight + Anton + Mea Culpa script)
+// over an HD painted scene that the AI "finds" inside real per-pixel noise.
+const W = 1080, H = 1920, cv = document.getElementById("c"), g = cv.getContext("2d");
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), lerp = (a, b, k) => a + (b - a) * k;
+const sm = (a, b, x) => { const k = clamp((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+
+// ---------- Perlin noise + fbm ----------
+const P = new Uint8Array(512); { const p = [...Array(256).keys()]; let s = 7; for (let i = 255; i > 0; i--) { s = (s * 16807) % 2147483647; const j = s % (i + 1); [p[i], p[j]] = [p[j], p[i]]; } for (let i = 0; i < 512; i++) P[i] = p[i & 255]; }
+const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+function grd(h, x, y) { switch (h & 7) { case 0: return x + y; case 1: return -x + y; case 2: return x - y; case 3: return -x - y; case 4: return x; case 5: return -x; case 6: return y; default: return -y; } }
+function perlin(x, y) { const X = Math.floor(x) & 255, Y = Math.floor(y) & 255; x -= Math.floor(x); y -= Math.floor(y); const u = fade(x), v = fade(y), a = P[X] + Y, b = P[X + 1] + Y;
+  return lerp(lerp(grd(P[a], x, y), grd(P[b], x - 1, y), u), lerp(grd(P[a + 1], x, y - 1), grd(P[b + 1], x - 1, y - 1), u), v); }
+function fbm(x, y, o = 6) { let s = 0, a = .5, f = 1; for (let i = 0; i < o; i++) { s += a * perlin(x * f, y * f); f *= 2.02; a *= .5; } return s; }
+
+// ---------- the picture: a lone figure on a peak above the clouds ----------
+const IMG = new Float32Array(W * H * 3);
+function paint() {
+  const sky = y => { const k = y / H; const top = [24, 92, 150], mid = [84, 168, 214], low = [196, 230, 244]; return k < .45 ? top.map((c, i) => lerp(c, mid[i], k / .45)) : mid.map((c, i) => lerp(c, low[i], (k - .45) / .55)); };
+  const peakEdge = (y) => { // half-width of the rock at height y (plateau near y=1330)
+    const t = clamp((y - 1335) / 585); return 70 + 380 * Math.pow(t, .8) + fbm(y / 90, 3.1, 4) * 60; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let c = sky(y);
+    // clouds: a bank across the middle, a sea of cloud below the peak
+    const n = fbm(x / 520, y / 300, 7), band = .04 + sm(380, 1000, y) * .18 - sm(1000, 1300, y) * .14 + sm(1380, 1700, y) * .5;
+    const d = sm(.02, .3, n + band);
+    if (d > 0) { const up = fbm(x / 520, (y - 26) / 300, 7) + band, lit = clamp(.62 + (n - up) * 7 + d * .25);
+      const cc = [lerp(132, 255, lit), lerp(156, 255, lit), lerp(184, 253, lit)]; c = c.map((v, i) => lerp(v, cc[i], d)); }
+    // the rock
+    const cx = 545 + fbm(y / 300, 8.7, 3) * 50, hw = y > 1330 ? peakEdge(y) : -1;
+    if (hw > 0 && Math.abs(x - cx) < hw) {
+      const shade = (x - cx) / hw, ridge = 1 - Math.abs(fbm(x / 140, y / 46, 5)) * 2, crack = Math.abs(fbm(x / 35 + 3, y / 220, 3)) < .03 ? -34 : 0;
+      const v = 104 + ridge * 46 + fbm(x / 22, y / 22, 3) * 30 - shade * 52 - clamp((y - 1335) / 585) * 18 + crack;
+      c = [v * .95, v * .97, v * 1.02];
+      if (y < 1350) c = c.map(v => v * 1.12);   // lit top edge
+    }
+    // mist in front of the rock base
+    const m = sm(1560, 1900, y) * sm(.0, .45, fbm(x / 300, y / 120 + 9, 5) + .25);
+    if (m > 0) c = c.map((v, i) => lerp(v, [236, 242, 246][i], m * .85));
+    const i = (y * W + x) * 3; IMG[i] = c[0] / 255; IMG[i + 1] = c[1] / 255; IMG[i + 2] = c[2] / 255;
+  }
+}
+function figure(ctx, k = 1) { // tiny hiker standing on the plateau
+  ctx.save(); ctx.translate(545, 1334); ctx.globalAlpha = k;
+  ctx.fillStyle = "#1d2733"; ctx.fillRect(-7, -30, 6, 30); ctx.fillRect(2, -30, 6, 30);           // legs
+  ctx.fillStyle = "#e9eef2"; ctx.beginPath(); ctx.roundRect(-9, -58, 19, 30, 4); ctx.fill();       // tee
+  ctx.fillStyle = "#7a5a46"; ctx.beginPath(); ctx.arc(0.5, -65, 7, 0, 6.283); ctx.fill();        // head
+  ctx.fillStyle = "#2a1f1a"; ctx.beginPath(); ctx.arc(0.5, -68, 7, Math.PI, 0); ctx.fill();      // hair
+  ctx.restore();
+}
+
+// ---------- diffusion: x_t = cos(s·π/2)·image + sin(s·π/2)·gaussian noise, per pixel ----------
+const NZ = new Float32Array(W * H * 3); { let s = 99; const r = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let i = 0; i < W * H; i++) { const u = Math.max(1e-9, r()), v = r(), l = Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); for (let j = 0; j < 3; j++) NZ[i * 3 + j] = l * .75 + (r() - .5) * .9; } }
+function diffused(s, dim = 1) {
+  const id = g.createImageData(W, H), a = Math.cos(s * Math.PI / 2), b = Math.sin(s * Math.PI / 2);
+  for (let i = 0; i < W * H; i++) for (let j = 0; j < 3; j++) id.data[i * 4 + j] = clamp(a * IMG[i * 3 + j] + b * (.5 + .34 * NZ[i * 3 + j])) * 255 * dim;
+  for (let i = 0; i < W * H; i++) id.data[i * 4 + 3] = 255;
+  g.putImageData(id, 0, 0);
+}
+
+// ---------- type ----------
+function txt(s, font, x, y, color, ls = 0, align = "center") { g.font = font; g.letterSpacing = ls + "px"; g.fillStyle = color; g.textAlign = align; g.textBaseline = "alphabetic"; g.fillText(s, x, y); g.letterSpacing = "0px"; }
+function meta(color) { const f = "600 30px 'Inter Tight'"; txt("zbacktrack", f, 120, 300, color, 0, "left"); txt("AI, explained", f, 540, 300, color); txt("No. 01", f, 960, 300, color, 0, "right"); }
+function grain(a = .06) { const id = g.getImageData(0, 0, W, H); let s = 3; for (let i = 0; i < id.data.length; i += 4) { s = (s * 1103515245 + 12345) & 0x7fffffff; const n = ((s / 0x7fffffff) - .5) * 255 * a; id.data[i] += n; id.data[i + 1] += n; id.data[i + 2] += n; } g.putImageData(id, 0, 0); }
+function vignette(a) { const v = g.createRadialGradient(540, 960, 500, 540, 960, 1250); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, `rgba(0,0,0,${a})`); g.fillStyle = v; g.fillRect(0, 0, W, H); }
+
+const FRAMES = {
+  // A · the hook: static fills the screen, poster type on top
+  hook() {
+    diffused(1, .62); vignette(.6);
+    meta("rgba(244,240,232,.75)");
+    txt("what happens when you", "800 66px 'Inter Tight'", 540, 760, "#F4F0E8", -2);
+    txt("ASK AI", "300px Anton", 540, 1070, "#F4F0E8", 2);
+    txt("for an image", "190px 'Mea Culpa'", 560, 1150, "#C9B8FF");
+    txt("Nobody shows you this part.", "600 40px 'Inter Tight'", 540, 1330, "rgba(244,240,232,.8)");
+  },
+  // B · mid-way: the picture is surfacing out of the noise
+  middle() {
+    diffused(.66); figure(g, .35); vignette(.35);
+    meta("rgba(16,30,44,.75)");
+    txt("every step, it asks", "800 62px 'Inter Tight'", 540, 520, "#0F1E2C", -2);
+    txt("what doesn't belong?", "150px 'Mea Culpa'", 540, 680, "#0F1E2C");
+    // pinned label on the emerging peak
+    g.save(); g.fillStyle = "rgba(10,18,28,.82)"; g.beginPath(); g.roundRect(380, 1180, 330, 74, 37); g.fill();
+    g.fillStyle = "#C9B8FF"; g.beginPath(); g.arc(416, 1217, 9, 0, 6.283); g.fill(); g.restore();
+    txt("Step 31 of 50", "600 38px 'Inter Tight'", 440, 1231, "#F4F0E8", 0, "left");
+    g.strokeStyle = "rgba(255,255,255,.85)"; g.lineWidth = 3; g.setLineDash([10, 10]); g.beginPath(); g.ellipse(545, 1320, 150, 80, 0, 0, 6.283); g.stroke(); g.setLineDash([]);
+  },
+  // C · the payoff: the finished picture, poster type over the sky
+  final() {
+    diffused(0); figure(g); vignette(.25);
+    meta("rgba(16,30,44,.75)");
+    txt("pure noise", "800 66px 'Inter Tight'", 540, 560, "#0F1E2C", -2);
+    txt("50 STEPS", "250px Anton", 540, 820, "#13202C", 2);
+    txt("later", "170px 'Mea Culpa'", 700, 900, "#13202C");
+    txt("It never painted this. It deleted everything else.", "600 36px 'Inter Tight'", 540, 1010, "rgba(15,30,44,.85)");
+  },
+};
+window.ready = (async () => { await Promise.all(["300px Anton", "150px 'Mea Culpa'", "800 60px 'Inter Tight'", "600 40px 'Inter Tight'"].map(f => document.fonts.load(f))); paint(); return true; })();
+window.frame = name => { FRAMES[name](); grain(); return cv.toDataURL("image/png").split(",")[1]; };
+</script>
+</body>
+</html>
