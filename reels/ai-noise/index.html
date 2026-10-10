@@ -202,7 +202,7 @@ function typeLine(text, t, o) {
       g.globalAlpha = kk * (1 - out); g.fillText(ch, x, o.y + (1 - kk) * 34); x += cw; }
   }
   g.restore();
-  BOXES.push({ id: o.id, group: o.group, x: x0, y: boxY, w: tw, h: boxH, a: (1 - out) * eo(a0), contrast, size: o.size });
+  BOXES.push({ id: o.id, group: o.group, words: text.split(" ").length, x: x0, y: boxY, w: tw, h: boxH, a: (1 - out) * eo(a0), contrast, size: o.size });
 }
 function pill(id, text, t, t0, t1, y, { dot = LAV, size = 40 } = {}) {
   const a = win(t, t0, t1, .35, .3); if (a <= 0) return;
@@ -389,7 +389,7 @@ function seek(tt) {
   // grain + vignette, then fades
   grainV(fr);
   const fade = prog(tt, DUR - .5, DUR); if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
-  return BOXES.map(b => ({ id: b.id, group: b.group, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
+  return BOXES.map(b => ({ id: b.id, group: b.group, words: b.words, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
 }
 
 function text(t) {
@@ -402,11 +402,11 @@ function text(t) {
   // 2 · PROMPT now lives in the app card (opening)
   // 3 · it starts with noise
   typeLine("It doesn't start", t, { id: "p1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.push, t1: T.startsThis - .1, ls: -2 });
-  typeLine("with a blank page.", t, { id: "p2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.push + .25, t1: T.startsThis - .1, ls: -2 });
+  typeLine("with a blank page.", t, { id: "p2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.push + .75, t1: T.startsThis - .1, ls: -2 });
   typeLine("It starts with", t, { id: "p3", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.startsThis, t1: T.question - .1, ls: -2 });
   typeLine("this.", t, { id: "p4", font: F.script(230), size: 230, y: 1080, color: LAV, t0: T.startsThis + .45, t1: T.question - .1, mode: "write", dur: .6 });
   typeLine("Then it asks", t, { id: "q1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.question, t1: T.belong - .05, ls: -2 });
-  typeLine("one question…", t, { id: "q2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.question + .25, t1: T.belong - .05, ls: -2 });
+  typeLine("one question…", t, { id: "q2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.question + .7, t1: T.belong - .05, ls: -2 });
   typeLine("what doesn't belong?", t, { id: "q3", font: F.script(150), size: 150, y: 1000, color: CREAM, t0: T.belong, t1: T.steps + .1, mode: "write", dur: 1.0 });
   // 4 · the steps
   if (t > T.steps - .1 && t < T.snap + 1.4) pill("step", t < T.snap ? `Step ${stepAt(t)} of 50` : "Step 50 of 50  ✓", t, T.steps, T.snap + 1.4, 300, { dot: t < T.snap ? LAV : GOLD });
@@ -417,24 +417,23 @@ function text(t) {
   // 5 · the twist
   meta(t, win(t, T.snap + .8, T.wall + .2, .5, .4), "rgba(15,30,44,.75)");
   typeLine("But how does it know", t, { id: "w1", font: F.inter(66), size: 66, y: 560, color: INK, t0: T.twist, t1: T.wall + .2, ls: -2 });
-  typeLine("what a cliff looks like?", t, { id: "w2", font: F.script(140), size: 140, y: 720, color: INK, t0: T.twist + .5, t1: T.wall + .2, mode: "write" });
+  typeLine("what a cliff looks like?", t, { id: "w2", font: F.script(140), size: 140, y: 720, color: INK, t0: T.twist + .9, t1: T.wall + .2, mode: "write" });
   // 6 · the wall of photos
   typeLine("It studied", t, { id: "m1", font: F.inter(70), size: 70, y: 620, color: CREAM, t0: T.wall + 1.8, t1: 41.3, ls: -2 });
   typeLine("millions", t, { id: "m2", group: "mil", font: F.anton(240), size: 240, y: 880, color: CREAM, t0: T.wall + 2.2, t1: 41.3, mode: "slam" });
   typeLine("of photos.", t, { id: "m3", group: "mil", font: F.script(150), size: 150, y: 990, x: 600, color: LAV, t0: T.wall + 2.7, t1: 41.3, mode: "write" });
-  typeLine("Each one buried in noise,", t, { id: "m4", font: F.inter(62), size: 62, y: 860, color: CREAM, t0: 41.5, t1: T.waveBack + .1, ls: -2 });
-  typeLine("step by step.", t, { id: "m5", font: F.inter(62), size: 62, y: 950, color: CREAM, t0: 41.8, t1: T.waveBack + .1, ls: -2 });
+  typeLine("Each one covered in noise.", t, { id: "m4", font: F.inter(64), size: 64, y: 900, color: CREAM, t0: 41.5, t1: T.waveBack + .1, ls: -2 });
   typeLine("Until it learned", t, { id: "m6", font: F.inter(62), size: 62, y: 820, color: CREAM, t0: T.waveBack + .2, t1: T.flyIn + .3, ls: -2 });
   typeLine("what's noise", t, { id: "m7", font: F.script(140), size: 140, y: 960, color: LAV, t0: T.waveBack + .6, t1: T.flyIn + .3, mode: "write", dur: .7 });
-  typeLine("and what's not.", t, { id: "m8", font: F.inter(62), size: 62, y: 1080, color: CREAM, t0: T.waveBack + 1.3, t1: T.flyIn + .3, ls: -2 });
+  typeLine("and what's not.", t, { id: "m8", font: F.inter(62), size: 62, y: 1080, color: CREAM, t0: T.waveBack + 1.5, t1: T.flyIn + .3, ls: -2 });
   if (t > T.wall + 1.6 && t < T.flyIn + .2) { const n = Math.floor(lerp(1200, 4800000, ei(prog(t, T.wall + 1.6, T.flyIn)))); pill("count", `${n.toLocaleString("en-US")} photos studied`, t, T.wall + 1.6, T.flyIn + .2, 1290, { dot: GOLD }); }
   // 7 · the payoff poster
   meta(t, win(t, T.poster, T.end + .2, .5, .4), "rgba(15,30,44,.75)");
   typeLine("pure noise", t, { id: "f1", font: F.inter(66), size: 66, y: 560, color: INK, t0: T.poster + .2, t1: T.end + .2, ls: -2 });
   typeLine("50 STEPS", t, { id: "f2", group: "fifty", font: F.anton(250), size: 250, y: 820, color: "#13202C", t0: T.slam2, t1: T.end + .2, ls: 2, mode: "slam" });
   typeLine("later", t, { id: "f3", group: "fifty", font: F.script(170), size: 170, y: 905, x: 700, color: "#13202C", t0: T.slam2 + .7, t1: T.end + .2, mode: "write", dur: .6 });
-  typeLine("It never painted this.", t, { id: "f4", font: F.inter(44, 600), size: 44, y: 1030, color: INK, t0: 51.8, t1: T.end + .2 });
-  typeLine("It deleted everything else.", t, { id: "f5", font: F.inter(44, 800), size: 44, y: 1090, color: INK, t0: 53.4, t1: T.end + .2 });
+  typeLine("It never painted this.", t, { id: "f4", font: F.inter(52), size: 52, y: 1060, color: INK, t0: 51.4, t1: 53.9 });
+  typeLine("It deleted everything else.", t, { id: "f5", font: F.inter(52), size: 52, y: 1060, color: INK, t0: 54.0, t1: T.end + .2 });
 }
 function promptBar(t) {
   if (t < T.prompt || t > T.push + .6) return;
@@ -554,12 +553,11 @@ function opening(t) {
     hookWord("what happens when you", F.inter(64), 64, 720, t, .05, .02, "#FFFFFF", false, out);
     hookWord("ASK AI", F.display(232), 232, 930, t, .55, .07, "#FFFFFF", true, out);
     hookWord("for an image?", F.serif(150), 150, 1080, t, 1.15, .035, "#FFFFFF", false, out);
-    hookWord("Nobody shows you this part.", F.inter(44, 800), 44, 1250, t, 1.8, .015, "#FFFFFF", false, out);
     g.restore();
   }
   grainV(fr);
   const fade = 1 - prog(t, 0, .12); if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
-  return BOXES.map(b => ({ id: b.id, group: b.group, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
+  return BOXES.map(b => ({ id: b.id, group: b.group, words: b.words, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
 }
 // letters pop in one by one (scale-overshoot + rise); measured for QA before drawing
 function hookWord(text, font, size, y, t, t0, stagger, color, pop, out = 0) {
@@ -577,7 +575,7 @@ function hookWord(text, font, size, y, t, t0, stagger, color, pop, out = 0) {
   }
   g.restore();
   // readable once fully in; the 0.5 s whoosh-out (moving + blurred) is not a reading moment
-  BOXES.push({ id: "hook:" + text.slice(0, 8), group: "hook", x: x0, y: y - size * .78, w: tw, h: size, a: out > .02 ? 0 : eo(prog(t, t0 + text.length * stagger, t0 + text.length * stagger + .5)), contrast, size });
+  BOXES.push({ id: "hook:" + text.slice(0, 8), group: "hook", words: text.split(" ").length, x: x0, y: y - size * .78, w: tw, h: size, a: out > .02 ? 0 : eo(prog(t, t0 + text.length * stagger, t0 + text.length * stagger + .5)), contrast, size });
 }
 
 // ---------- sound cues (exported for audio/mix.py) ----------

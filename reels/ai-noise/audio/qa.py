@@ -17,7 +17,7 @@ fails = []
 
 print("hero cue sync (onset within ±40 ms):")
 for c in cues:
-    if c["s"] not in ("braam", "slam", "impact", "thunder", "enter", "endhit", "sub"): continue
+    if c["s"] not in ("braam", "slam", "impact", "thunder", "enter", "endhit", "sub", "boom"): continue
     i0, i1 = int((c["t"] - .1) / .005), int((c["t"] + .1) / .005)
     d = np.diff(lvl[i0:i1]); k = int(np.argmax(d)); onset = (i0 + k) * .005
     jump = lvl[i0 + k + 4] - lvl[max(0, i0 + k - 6)]
@@ -28,6 +28,7 @@ for c in cues:
 
 # intended dead-stops before hero hits must be quiet relative to the hit
 for name, pre in (("braam", .15), ("impact", .14)):
+    if not any(c["s"] == name for c in cues): continue
     t = next(c["t"] for c in cues if c["s"] == name)
     before = lvl[int((t - pre) / .005):int((t - .03) / .005)].mean(); after = lvl[int(t / .005):int((t + .3) / .005)].max()
     ok = after - before > 18
