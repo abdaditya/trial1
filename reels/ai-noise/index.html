@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AI noise to image — style test</title>
+<style>
+  @font-face { font-family: "Manrope"; src: url(../svb-bank-run/fonts/manrope.woff2) format("woff2"); font-weight: 800; }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; width: 540px; height: 960px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ---------------------------------------------------------------------------
+// zbacktrack · "How AI draws an image from pure noise" · style test (0–6 s)
+// Deterministic: every frame is a pure function of t. window.seek(t) draws it
+// and returns the text boxes drawn, so the renderer can QA overlap + safe zone.
+// ---------------------------------------------------------------------------
+const W = 1080, H = 1920, DUR = 6;
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+const C = {
+  bg0: "#0B1120", bg1: "#18213A", cream: "#F4ECDC", lav: "#B9A6F2",
+  gold: "#E3B341", red: "#D2452E", box: "rgba(11,17,32,0.90)", line: "rgba(244,236,220,0.14)",
+};
+const SAFE = { x0: 90, x1: 990, y0: 250, y1: 1540 };
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eo = k => 1 - Math.pow(1 - k, 3);
+function rng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const gauss = r => { const u = Math.max(1e-9, r()), v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2832 * v); };
+
+// ---------- the picture the AI will "find": sunset over mountains ----------
+const GW = 54, GH = 96, N = GW * GH;
+const X0 = new Float32Array(N * 3);
+{ const r = rng(5);
+  const sky = (v) => { // v: 0 top .. 1 horizon
+    const stops = [[0, [24, 30, 64]], [.45, [96, 74, 150]], [.75, [214, 120, 120]], [1, [246, 184, 110]]];
+    for (let i = 1; i < stops.length; i++) if (v <= stops[i][0]) { const k = (v - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]); return stops[i - 1][1].map((c, j) => lerp(c, stops[i][1][j], k)); }
+    return stops[stops.length - 1][1];
+  };
+  const hz = 58;                                    // horizon row
+  const ridge = (x, f, a, o) => o + Math.sin(x * f + 1.3) * a + Math.sin(x * f * 2.7 + .4) * a * .45;
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    let c = sky(clamp(y / hz));
+    const dx = x - 27, dy = y - 46, d = Math.hypot(dx, dy * 1.0);
+    if (d < 7.5) c = [250, 214, 120]; else if (d < 10) c = c.map((v, j) => lerp(v, [250, 200, 120][j], .35));
+    if (y > ridge(x, .21, 3.2, 44)) c = [74, 52, 98];   // far range
+    if (y > ridge(x, .15, 4.5, 52)) c = [40, 30, 60];   // near range
+    if (y >= hz) {                                      // lake with reflection
+      const ry = 2 * hz - y; let rc = ry >= 0 ? sky(clamp(ry / hz)) : [20, 24, 50];
+      const rd = Math.hypot(x - 27, (ry - 46));
+      if (rd < 7.5 && Math.sin(y * 1.7) > -.2) rc = [240, 196, 110];
+      c = rc.map(v => v * .62 + 14);
+      if ((y + x * .3) % 7 < 1) c = c.map(v => v * 1.15);
+    }
+    if (y > 84) c = [18, 20, 36].map(v => v + r() * 6);  // shore
+    for (let j = 0; j < 3; j++) X0[(y * GW + x) * 3 + j] = c[j] / 255;
+  } }
+
+// fixed noise ε for the denoise; plus a flickering "TV static" during the hook
+const EPS = new Float32Array(N * 3), EZ = new Float32Array(N);
+{ const r = rng(9); for (let i = 0; i < N; i++) { const l = gauss(r); for (let j = 0; j < 3; j++) EPS[i * 3 + j] = l * .9 + gauss(r) * .12; EZ[i] = gauss(r); } }
+function staticNoise(frame, i, j) { // cheap hashed static that changes ~15x per second
+  let h = Math.imul(i * 3 + j + 1, 2654435761) ^ Math.imul(frame + 7, 2246822519); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13;
+  return ((h >>> 0) / 4294967296) * 2 - 1;
+}
+
+// ---------- 3D camera ----------
+// Panel of tiles at z=0 facing the camera; tiles float in z by their noise.
+const PW = 1300, CELL = PW / GW, PH = CELL * GH;
+const CAM = [ // yaw, pitch (radians), dist, spread (how far tiles float apart)
+  { t: 0.0, yaw: 0, pitch: 0, dist: 1500, spread: 0 },
+  { t: 1.0, yaw: 0, pitch: 0, dist: 1480, spread: 0 },
+  { t: 3.4, yaw: -.12, pitch: .34, dist: 1560, spread: 1 },
+  { t: 6.0, yaw: -.08, pitch: .26, dist: 1500, spread: .7 },
+];
+function cam(t) { let i = 0; while (i < CAM.length - 2 && t > CAM[i + 1].t) i++; const a = CAM[i], b = CAM[i + 1], k = eio(prog(t, a.t, b.t)); const o = {}; for (const key of ["yaw", "pitch", "dist", "spread"]) o[key] = lerp(a[key], b[key], k); return o; }
+const F = 1500;
+
+// ---------- text with QA registry ----------
+let BOXES = [];
+const font = s => `800 ${s}px Manrope`;
+// Caption: solid rounded backing, one or more lines, optional underlined key word (like the reference).
+function caption(lines, { y, size = 76, a = 1, key = null, id }) {
+  if (a <= 0) return;
+  g.font = font(size); g.textBaseline = "alphabetic"; g.textAlign = "left";
+  const lh = size * 1.22, padX = 44, padY = 30;
+  const widths = lines.map(l => g.measureText(l).width), w = Math.max(...widths) + padX * 2, h = lines.length * lh + padY * 2 - (lh - size * 1.05);
+  const x = 540 - w / 2;
+  g.save(); g.globalAlpha = a;
+  g.fillStyle = C.box; g.beginPath(); g.roundRect(x, y, w, h, 30); g.fill();
+  g.strokeStyle = "rgba(244,236,220,.18)"; g.lineWidth = 2; g.stroke();
+  lines.forEach((l, i) => {
+    const lx = 540 - widths[i] / 2, by = y + padY + size * .9 + i * lh;
+    g.fillStyle = C.cream; g.fillText(l, lx, by);
+    if (key && l.includes(key.word)) { // lavender underline sweeps under the key word
+      const pre = g.measureText(l.slice(0, l.indexOf(key.word))).width, kw = g.measureText(key.word).width;
+      g.fillStyle = C.lav; g.fillRect(lx + pre, by + size * .16, kw * eo(key.p), Math.max(6, size * .08));
+    }
+  });
+  g.restore();
+  BOXES.push({ id, x, y, w, h, a });
+}
+function pill(text, { y, a = 1, id, dot = C.gold }) {
+  if (a <= 0) return;
+  const size = 44; g.font = font(size); const tw = g.measureText(text).width, w = tw + 110, h = 84, x = 540 - w / 2;
+  g.save(); g.globalAlpha = a; g.fillStyle = C.box; g.beginPath(); g.roundRect(x, y, w, h, 42); g.fill();
+  g.strokeStyle = "rgba(244,236,220,.22)"; g.lineWidth = 2; g.stroke();
+  g.fillStyle = dot; g.beginPath(); g.arc(x + 44, y + h / 2, 11, 0, 6.2832); g.fill();
+  g.fillStyle = C.cream; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(text, x + 72, y + h / 2 + 2);
+  g.restore();
+  BOXES.push({ id, x, y, w, h, a });
+}
+
+// ---------- frame ----------
+const order = new Uint32Array(N), depth = new Float32Array(N), sx = new Float32Array(N), sy = new Float32Array(N), ss = new Float32Array(N);
+function seek(t) {
+  BOXES = [];
+  const c = cam(t), cy = Math.cos(c.yaw), sy_ = Math.sin(c.yaw), cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, C.bg0); bg.addColorStop(1, C.bg1);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+  // noise level s: 1 = pure static, 0 = clean picture. Denoising starts at 3.0 s.
+  const s = 1 - .68 * eio(prog(t, 3.0, 6.0));
+  const ab = Math.cos(s * Math.PI / 2), sb = Math.sin(s * Math.PI / 2);   // x_t = a·x0 + b·ε (cosine schedule)
+  const live = 1 - prog(t, 2.4, 3.0), frame = Math.floor(t * 15);           // flickering static fades into fixed ε
+
+  for (let i = 0; i < N; i++) {
+    const gx = i % GW, gy = (i / GW) | 0;
+    const X = (gx + .5) * CELL - PW / 2, Y = (gy + .5) * CELL - PH / 2, Z = -EZ[i] * 170 * sb * c.spread;
+    const x1 = X * cy - Z * sy_, z1 = X * sy_ + Z * cy, y2 = Y * cp - z1 * sp, z2 = Y * sp + z1 * cp;
+    const d = z2 + c.dist; depth[i] = d; sx[i] = 540 + F * x1 / d; sy[i] = 960 + F * y2 / d; ss[i] = CELL * F / d; order[i] = i;
+  }
+  order.sort((a, b) => depth[b] - depth[a]);   // painter's order: far first
+  const gap = lerp(1.04, .9, c.spread * sb);
+  for (let n = 0; n < N; n++) {
+    const i = order[n], sz = ss[i] * gap;
+    if (sx[i] < -sz || sx[i] > W + sz || sy[i] < -sz || sy[i] > H + sz) continue;
+    const rgb = [0, 1, 2].map(j => {
+      const e = lerp(EPS[i * 3 + j], staticNoise(frame, i, 0) * 1.6 + staticNoise(frame, i, j + 1) * .12, live);
+      return clamp(ab * X0[i * 3 + j] + sb * (.5 + .32 * e)) * 255 | 0;
+    });
+    g.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    g.fillRect(sx[i] - sz / 2, sy[i] - sz / 2, sz, sz);
+  }
+
+  // ----- text (screen space, QA-registered) -----
+  const capA = eo(prog(t, .25, .7)) * (1 - prog(t, 2.6, 3.0));
+  caption(["Every AI image", "starts as this."], { id: "hook", y: 780, size: 84, a: capA, key: { word: "this.", p: prog(t, .9, 1.4) } });
+  const step = Math.max(1, Math.round(1 + 49 * (1 - s)));
+  pill(`Step ${step} / 50`, { id: "step", y: 300, a: eo(prog(t, 3.0, 3.4)) });
+  caption(["Here's how it works."], { id: "how", y: 1380, size: 64, a: eo(prog(t, 4.2, 4.7)) });
+  return BOXES.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2) }));
+}
+
+window.DUR = DUR; window.SAFE = SAFE;
+window.ready = (async () => { await document.fonts.load(font(80)); window.seek = seek; seek(0); return { tiles: N }; })();
+</script>
+</body>
+</html>
