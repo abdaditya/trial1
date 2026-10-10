@@ -16,7 +16,7 @@ const [mode = "stills", ...rest] = process.argv.slice(2);
 const browser = await chromium.launch({ args: ["--allow-file-access-from-files"] });
 const page = await browser.newPage({ viewport: { width: 1080, height: 1920 } });
 page.on("pageerror", e => { console.error("[page error]", e.message); process.exit(1); });
-await page.goto("file://" + path.join(here, "index.html"));
+await page.goto("file://" + path.join(here, process.env.PAGE || "index.html"));
 console.log("ready", await page.evaluate(() => window.ready));
 const SAFE = await page.evaluate(() => window.SAFE);
 mkdirSync(path.join(here, "out"), { recursive: true });
@@ -35,6 +35,7 @@ function qa(t, boxes) {
   }
   for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
     const a = vis[i], b = vis[j], gap = 16; // boxes must keep a 16 px gap
+    if (a.group && a.group === b.group) continue;   // a designed lockup (script over display word) may overlap itself
     if (a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap)
       fails.push({ t, kind: "overlap", ids: [a.id, b.id] });
   }
@@ -49,7 +50,7 @@ if (mode === "stills") {
   const dir = path.join(here, "out/stills"); mkdirSync(dir, { recursive: true });
   for (const s of rest) writeFileSync(path.join(dir, `t_${s}.png`), await grab(+s));
 } else {
-  const fps = +(rest[0] || 30), dur = await page.evaluate(() => window.DUR), n = Math.round(dur * fps);
+  const fps = +(rest[0] || 30), dur = +(process.env.END || await page.evaluate(() => window.DUR)), n = Math.round(dur * fps);
   mkdirSync(path.join(here, "out"), { recursive: true });
   const ff = spawn("ffmpeg", ["-y", "-v", "error", "-f", "image2pipe", "-framerate", String(fps), "-i", "-",
     "-c:v", "libx264", "-preset", "slow", "-crf", "14", "-pix_fmt", "yuv420p", "-movflags", "+faststart",

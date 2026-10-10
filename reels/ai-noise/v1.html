@@ -1,0 +1,615 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>How AI turns noise into an image</title>
+<style>
+  @font-face { font-family: "Inter Tight"; src: url(fonts/inter600.woff2) format("woff2"); font-weight: 600; }
+  @font-face { font-family: "Inter Tight"; src: url(fonts/inter800.woff2) format("woff2"); font-weight: 800; }
+  @font-face { font-family: "Instrument Serif"; src: url(fonts/serif.woff2) format("woff2"); font-style: italic; }
+  @font-face { font-family: "JetBrains Mono"; src: url(fonts/mono.woff2) format("woff2"); font-weight: 600; }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; width: 540px; height: 960px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ===========================================================================
+// zbacktrack · "How AI turns pure noise into an image" · 78 s, no voice.
+// Deterministic: every frame is a pure function of t. window.seek(t) draws the
+// frame and returns its text boxes (+ measured contrast) for the QA in render.mjs.
+// window.CUES lists every sound event, taken from the same timeline constants.
+// ===========================================================================
+const W = 1080, H = 1920, DUR = 78;
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+const wc = document.createElement("canvas"); wc.width = W; wc.height = H; const w = wc.getContext("2d"); // world layer
+const C = {
+  bg0: "#070B16", bg1: "#141C33", cream: "#F4ECDC", lav: "#B9A6F2", lavDk: "#7C66D6",
+  gold: "#E3B341", red: "#E0553A", scrim: [7, 11, 22],
+};
+const SAFE = { x0: 90, x1: 990, y0: 250, y1: 1400 };
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eo = k => 1 - Math.pow(1 - k, 3);
+const ei = k => k * k * k;
+const sm = k => k * k * (3 - 2 * k);
+const win = (t, a, b, fi = .5, fo = .5) => eo(prog(t, a, a + fi)) * (1 - eio(prog(t, b - fo, b)));
+function rng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const gauss = r => { const u = Math.max(1e-9, r()), v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2832 * v); };
+function hash(a, b) { let h = Math.imul(a + 1, 2654435761) ^ Math.imul(b + 7, 2246822519); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; }
+
+// Smooth camera tracks: cubic Hermite through keys (Catmull-Rom tangents), keys with hold:1 stop dead.
+function track(keys, t) {
+  if (t <= keys[0].t) return { ...keys[0] };
+  if (t >= keys[keys.length - 1].t) return { ...keys[keys.length - 1] };
+  let i = 0; while (t > keys[i + 1].t) i++;
+  const k0 = keys[i], k1 = keys[i + 1], h = k1.t - k0.t, u = (t - k0.t) / h;
+  const h00 = 2 * u ** 3 - 3 * u * u + 1, h10 = u ** 3 - 2 * u * u + u, h01 = -2 * u ** 3 + 3 * u * u, h11 = u ** 3 - u * u;
+  const out = {};
+  for (const f in k0) {
+    if (f === "t" || f === "hold") continue;
+    const tan = j => { const k = keys[j]; if (k.hold || j === 0 || j === keys.length - 1) return 0; return (keys[j + 1][f] - keys[j - 1][f]) / (keys[j + 1].t - keys[j - 1].t); };
+    out[f] = h00 * k0[f] + h10 * h * tan(i) + h01 * k1[f] + h11 * h * tan(i + 1);
+  }
+  return out;
+}
+
+// ---------- pictures (54 × 96 "pixels") ----------
+const GW = 54, GH = 96, N = GW * GH;
+function picture(fn) { const a = new Float32Array(N * 3); for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) { const c = fn(x, y); for (let j = 0; j < 3; j++) a[(y * GW + x) * 3 + j] = clamp(c[j] / 255); } return a; }
+const grad = (stops, v) => { for (let i = 1; i < stops.length; i++) if (v <= stops[i][0]) { const k = (v - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]); return stops[i - 1][1].map((c, j) => lerp(c, stops[i][1][j], k)); } return stops[stops.length - 1][1]; };
+const IMG = {};
+IMG.sunset = picture((x, y) => {
+  const sky = v => grad([[0, [24, 30, 64]], [.45, [96, 74, 150]], [.75, [214, 120, 120]], [1, [246, 184, 110]]], clamp(v));
+  const hz = 58, ridge = (x, f, a, o) => o + Math.sin(x * f + 1.3) * a + Math.sin(x * f * 2.7 + .4) * a * .45;
+  let c = sky(y / hz); const d = Math.hypot(x - 27, y - 46);
+  if (d < 7.5) c = [250, 214, 120]; else if (d < 10) c = c.map((v, j) => lerp(v, [250, 200, 120][j], .35));
+  if (y > ridge(x, .21, 3.2, 44)) c = [74, 52, 98];
+  if (y > ridge(x, .15, 4.5, 52)) c = [40, 30, 60];
+  if (y >= hz) { const ry = 2 * hz - y; let rc = sky(ry / hz); if (Math.hypot(x - 27, ry - 46) < 7.5 && Math.sin(y * 1.7) > -.2) rc = [240, 196, 110]; c = rc.map(v => v * .62 + 14); if ((y + x * .3) % 7 < 1) c = c.map(v => v * 1.15); }
+  if (y > 84) c = [18, 20, 36];
+  return c;
+});
+IMG.saturn = picture((x, y) => {
+  let c = grad([[0, [6, 8, 18]], [1, [16, 18, 40]]], y / GH);
+  if (hash(x, y * 7) > .985) c = [230, 226, 210];
+  const px = x - 27, py = y - 46, pr = Math.hypot(px, py * 1.02);
+  const ring = (rx, ry) => (px * px) / (rx * rx) + (py + px * .22) ** 2 / (ry * ry);
+  const inRing = ring(25, 7.2) < 1 && ring(17, 4.2) > 1;
+  const back = py + px * .22 < 0;
+  if (inRing && back) c = [196, 170, 120];
+  if (pr < 13) { const band = Math.sin(py * .75) * .5 + .5; c = grad([[0, [222, 190, 130]], [.5, [196, 150, 96]], [1, [238, 214, 160]]], band); c = c.map(v => v * (1 - clamp((px + 6) / 22) * .45)); }
+  if (inRing && !back) c = [214, 188, 136].map(v => v * (Math.abs(ring(21, 5.6) - 1) < .25 ? .7 : 1));
+  return c;
+});
+IMG.lighthouse = picture((x, y) => {
+  let c = grad([[0, [14, 18, 34]], [.5, [40, 48, 72]], [.62, [60, 66, 88]], [1, [60, 66, 88]]], y / 62);
+  const cl = Math.sin(x * .3 + y * .5) + Math.sin(x * .13 - y * .21) * 1.3; if (y < 50 && cl > 1.2) c = c.map(v => v * 1.25);
+  if (y >= 62) { c = grad([[0, [22, 34, 52]], [1, [10, 16, 28]]], (y - 62) / 34); if ((Math.sin(x * .9 + y * 2.1) + hash(x, y) * 1.2) > 1.55) c = [196, 206, 214]; }
+  const rock = 70 + Math.abs(x - 26) * .55 + Math.sin(x * .9) * 1.4;
+  if (y > rock && x > 6 && x < 46) c = [28, 24, 30].map(v => v + hash(x, y) * 10);
+  if (y >= 30 && y <= 72) { const half = lerp(3.2, 5, (y - 30) / 42); if (Math.abs(x - 26.5) < half) c = Math.floor((y - 30) / 7) % 2 ? [236, 230, 218] : [208, 62, 50]; if (Math.abs(x - 26.5) < half && x > 26.5 + half * .35) c = c.map(v => v * .72); }
+  if (y >= 24 && y < 30 && Math.abs(x - 26.5) < 3.4) c = [255, 226, 140];
+  if (y >= 21 && y < 24 && Math.abs(x - 26.5) < (24 - y) + 1) c = [36, 32, 40];
+  return c;
+});
+IMG.apple = picture((x, y) => {
+  let c = grad([[0, [232, 222, 200]], [1, [206, 192, 168]]], y / GH);
+  const px = x - 27, py = y - 50, r = Math.hypot(px * (px < 0 ? 1 : 1), py * 1.08) - Math.abs(px) * .08;
+  if (py > 12 && py < 16 && Math.abs(px) < 16) c = [176, 160, 136];
+  if (r < 16) { c = [196, 40, 44].map(v => v * (1 - clamp((px + py + 8) / 40) * .4)); if (Math.hypot(px + 6, py + 7) < 3.5) c = [244, 160, 150]; }
+  if (Math.abs(px - 1) < 1.2 && py > -24 && py < -14) c = [70, 46, 30];
+  if (Math.hypot(px - 6, py + 21) < 4 && py < -18) c = [70, 140, 70];
+  return c;
+});
+
+// noise fields (fixed per use so the same noise is "removed" step by step)
+function noiseField(seed) { const r = rng(seed), e = new Float32Array(N * 3), z = new Float32Array(N); for (let i = 0; i < N; i++) { const l = gauss(r); for (let j = 0; j < 3; j++) e[i * 3 + j] = l * .9 + gauss(r) * .12; z[i] = gauss(r); } return { e, z }; }
+const NZ = { a: noiseField(9), b: noiseField(19), c: noiseField(29), d: noiseField(39) };
+const staticN = (frame, i, j) => hash(i * 3 + j, frame) * 2 - 1;
+// x_t = cos(s·π/2)·x0 + sin(s·π/2)·noise  (cosine schedule: s=1 pure static, s=0 clean)
+function mixPx(img, nz, s, i, j, live = 0, frame = 0) {
+  const ab = Math.cos(s * Math.PI / 2), sb = Math.sin(s * Math.PI / 2);
+  const e = live > 0 ? lerp(nz.e[i * 3 + j], staticN(frame, i, 0) * 1.6 + staticN(frame, i, j + 1) * .12, live) : nz.e[i * 3 + j];
+  return clamp(ab * img[i * 3 + j] + sb * (.5 + .32 * e));
+}
+// Small canvases of a picture at noise level s (for flat panels), cached.
+const texCache = new Map();
+function tex(name, nzKey, s, extra = "") {
+  const key = `${name}|${nzKey}|${s.toFixed(3)}|${extra}`; if (texCache.has(key)) return texCache.get(key);
+  const c = document.createElement("canvas"); c.width = GW; c.height = GH; const x = c.getContext("2d"), id = x.createImageData(GW, GH);
+  const img = name === "noiseOnly" ? null : IMG[name], nz = NZ[nzKey];
+  for (let i = 0; i < N; i++) for (let j = 0; j < 3; j++) id.data[i * 4 + j] = (img ? mixPx(img, nz, s, i, j) : clamp(.5 + .32 * nz.e[i * 3 + j])) * 255;
+  for (let i = 0; i < N; i++) id.data[i * 4 + 3] = 255;
+  x.putImageData(id, 0, 0); if (texCache.size > 900) texCache.clear(); texCache.set(key, c); return c;
+}
+
+// ---------- 3D ----------
+const PW = 1300, CELL = PW / GW, PH = CELL * GH;
+function proj(cam, x, y, z) {
+  const dx = x - cam.tx, dy = y - cam.ty, dz = z - cam.tz, cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const x1 = dx * cy - dz * sy, z1 = dx * sy + dz * cy, y2 = dy * cp - z1 * sp, z2 = dy * sp + z1 * cp, d = z2 + cam.dist;
+  return [540 + cam.f * x1 / d, 960 + cam.f * y2 / d, d];
+}
+const camDefault = { tx: 0, ty: 0, tz: 0, yaw: 0, pitch: 0, dist: 1500, f: 1500 };
+
+// Tile panel: every pixel is a square floating in 3D.
+// o: {cx,cy,cz,scale, color(i)->[r,g,b,a]|null, z(i)->dz, gap}
+const ORD = new Uint32Array(N), DEP = new Float32Array(N), SX = new Float32Array(N), SY = new Float32Array(N), SS = new Float32Array(N);
+function tilePanel(ctx, cam, o) {
+  const sc = o.scale || 1, cell = CELL * sc;
+  let n = 0;
+  for (let i = 0; i < N; i++) {
+    const gx = i % GW, gy = (i / GW) | 0;
+    const p = proj(cam, (o.cx || 0) + ((gx + .5) * CELL - PW / 2) * sc, (o.cy || 0) + ((gy + .5) * CELL - PH / 2) * sc, (o.cz || 0) + (o.z ? o.z(i) : 0));
+    if (p[2] < 60) continue;
+    DEP[i] = p[2]; SX[i] = p[0]; SY[i] = p[1]; SS[i] = cell * cam.f / p[2]; ORD[n++] = i;
+  }
+  const ord = ORD.subarray(0, n); if (!o.flat) ord.sort((a, b) => DEP[b] - DEP[a]);
+  const gap = o.gap ?? 1.04;
+  for (let k = 0; k < n; k++) {
+    const i = ord[k], sz = SS[i] * gap; if (SX[i] < -sz || SX[i] > W + sz || SY[i] < -sz || SY[i] > H + sz) continue;
+    const c = o.color(i); if (!c) continue;
+    ctx.fillStyle = c.length > 3 ? `rgba(${c[0] * 255 | 0},${c[1] * 255 | 0},${c[2] * 255 | 0},${c[3]})` : `rgb(${c[0] * 255 | 0},${c[1] * 255 | 0},${c[2] * 255 | 0})`;
+    ctx.fillRect(SX[i] - sz / 2, SY[i] - sz / 2, sz, sz);
+  }
+}
+// Flat panel: a picture canvas mapped onto a 3D rectangle (affine triangles, pixel-crisp).
+function tri(ctx, img, x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2) {
+  ctx.save(); ctx.beginPath();
+  const cx = (x0 + x1 + x2) / 3, cy = (y0 + y1 + y2) / 3, ex = (x, c) => x + (x - c) * .02;   // tiny overdraw hides seams
+  ctx.moveTo(ex(x0, cx), ex(y0, cy)); ctx.lineTo(ex(x1, cx), ex(y1, cy)); ctx.lineTo(ex(x2, cx), ex(y2, cy)); ctx.closePath(); ctx.clip();
+  const den = (u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0);
+  const a = ((x1 - x0) * (v2 - v0) - (x2 - x0) * (v1 - v0)) / den, c = ((x2 - x0) * (u1 - u0) - (x1 - x0) * (u2 - u0)) / den;
+  const b = ((y1 - y0) * (v2 - v0) - (y2 - y0) * (v1 - v0)) / den, d = ((y2 - y0) * (u1 - u0) - (y1 - y0) * (u2 - u0)) / den;
+  ctx.transform(a, b, c, d, x0 - a * u0 - c * v0, y0 - b * u0 - d * v0); ctx.drawImage(img, 0, 0); ctx.restore();
+}
+function flatPanel(ctx, cam, img, o) {
+  const sc = o.scale || 1, hw = PW * sc / 2, hh = PH * sc / 2, n = o.sub || 3, ry = o.rotY || 0;
+  const pt = (u, v) => { const lx = (u - .5) * 2 * hw, ly = (v - .5) * 2 * hh; return proj(cam, (o.cx || 0) + lx * Math.cos(ry), (o.cy || 0) + ly, (o.cz || 0) + lx * Math.sin(ry)); };
+  const P = []; for (let j = 0; j <= n; j++) { P.push([]); for (let i = 0; i <= n; i++) P[j].push(pt(i / n, j / n)); }
+  if (P.flat().some(p => p[2] < 60)) return null;
+  ctx.save(); ctx.globalAlpha *= o.alpha ?? 1; ctx.imageSmoothingEnabled = false;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const a = P[j][i], b = P[j][i + 1], c = P[j + 1][i], d = P[j + 1][i + 1], u0 = i / n * GW, u1 = (i + 1) / n * GW, v0 = j / n * GH, v1 = (j + 1) / n * GH;
+    tri(ctx, img, a[0], a[1], b[0], b[1], c[0], c[1], u0, v0, u1, v0, u0, v1);
+    tri(ctx, img, b[0], b[1], d[0], d[1], c[0], c[1], u1, v0, u1, v1, u0, v1);
+  }
+  if (o.border) { ctx.strokeStyle = o.border; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(P[0][0][0], P[0][0][1]); ctx.lineTo(P[0][n][0], P[0][n][1]); ctx.lineTo(P[n][n][0], P[n][n][1]); ctx.lineTo(P[n][0][0], P[n][0][1]); ctx.closePath(); ctx.stroke(); }
+  ctx.restore();
+  return { tl: P[0][0], tr: P[0][n], bl: P[n][0], br: P[n][n] };
+}
+
+// ---------- text: crisp type, adaptive scrim, QA registry ----------
+let BOXES = [];
+const FONT = { sans: (s, wt = 800) => `${wt} ${s}px "Inter Tight"`, serif: s => `italic 400 ${s}px "Instrument Serif"`, mono: s => `600 ${s}px "JetBrains Mono"` };
+// Measure the brightest 10% of the background under a box; pick a scrim strong enough for ≥7:1 contrast.
+function scrimFor(x, y, wd, ht) {
+  const X = Math.max(0, x | 0), Y = Math.max(0, y | 0), ww = Math.min(W - X, wd | 0), hh = Math.min(H - Y, ht | 0); if (ww <= 0 || hh <= 0) return { a: .5, contrast: 21 };
+  const d = g.getImageData(X, Y, ww, hh).data, v = [];
+  for (let i = 0; i < d.length; i += 4 * 7) v.push(Math.max(d[i], d[i + 1], d[i + 2]) / 255);
+  v.sort((a, b) => a - b); const p90 = v[Math.floor(v.length * .9)] || 0;
+  const target = .28, s0 = C.scrim[0] / 255;
+  const a = clamp(p90 <= target ? .55 : (p90 - target) / (p90 - s0) + .08, .55, .94);
+  const after = lerp(p90, s0, a), lin = c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
+  return { a, contrast: (0.84 + .05) / (lin(after) + .05) };
+}
+// Rich line: parts [{s, serif?, color?}] centred at x; returns width.
+function measureParts(parts, size) { return parts.reduce((acc, p) => { g.font = p.serif ? FONT.serif(size * 1.12) : FONT.sans(size, p.wt || 800); return acc + g.measureText(p.s).width; }, 0); }
+function drawParts(parts, size, cx, by, alpha = 1) {
+  let x = cx - measureParts(parts, size) / 2; g.textBaseline = "alphabetic"; g.textAlign = "left";
+  for (const p of parts) { g.font = p.serif ? FONT.serif(size * 1.12) : FONT.sans(size, p.wt || 800); g.fillStyle = p.color || C.cream; g.globalAlpha = alpha; g.fillText(p.s, x, by); x += g.measureText(p.s).width; }
+  g.globalAlpha = 1;
+}
+// Caption: up to 2 lines, soft feathered scrim sized to the text, rises in, fades out.
+function caption(id, lines, t, t0, t1, yTop, size = 74) {
+  const a = win(t, t0, t1, .55, .45); if (a <= 0) return;
+  const rise = (1 - eo(prog(t, t0, t0 + .7))) * 28;
+  { const widest = Math.max(...lines.map(l => measureParts(l, size))); if (widest + 92 > 880) size *= (880 - 92) / widest; }   // auto-fit inside the safe zone
+  const lh = size * 1.18, widths = lines.map(l => measureParts(l, size)), wMax = Math.max(...widths);
+  const padX = 46, padY = 34, bw = wMax + padX * 2, bh = lines.length * lh + padY * 2 - lh * .16, bx = 540 - bw / 2, by = yTop + rise;
+  const s = scrimFor(bx, by, bw, bh);
+  g.save(); g.globalAlpha = a * s.a; g.fillStyle = `rgb(${C.scrim})`; g.shadowColor = `rgba(${C.scrim},.9)`; g.shadowBlur = 50;
+  g.beginPath(); g.roundRect(bx, by, bw, bh, 34); g.fill(); g.restore();
+  lines.forEach((l, i) => drawParts(l, size, 540, by + padY + size * .86 + i * lh, a));
+  BOXES.push({ id, x: bx, y: by, w: bw, h: bh, a, contrast: s.contrast, size });
+}
+function pill(id, text, t, t0, t1, y, { dot = C.gold, mono = false, size = 42 } = {}) {
+  const a = win(t, t0, t1, .4, .35); if (a <= 0) return;
+  g.font = mono ? FONT.mono(size) : FONT.sans(size, 600); const tw = g.measureText(text).width, bw = tw + 112, bh = size * 2, bx = 540 - bw / 2;
+  const s = scrimFor(bx, y, bw, bh);
+  g.save(); g.globalAlpha = a * Math.max(s.a, .82); g.fillStyle = `rgb(${C.scrim})`; g.beginPath(); g.roundRect(bx, y, bw, bh, bh / 2); g.fill();
+  g.globalAlpha = a; g.strokeStyle = "rgba(244,236,220,.2)"; g.lineWidth = 2; g.stroke();
+  g.fillStyle = dot; g.beginPath(); g.arc(bx + 44, y + bh / 2, 10, 0, 6.2832); g.fill();
+  g.fillStyle = C.cream; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(text, bx + 70, y + bh / 2 + 2); g.restore();
+  BOXES.push({ id, x: bx, y, w: bw, h: bh, a, contrast: Math.max(s.contrast, 7), size });
+}
+
+// ---------- timeline (seconds) — visuals and sound both read these ----------
+const T = {
+  typeStart: .25, typeEnd: 1.75, titleOut: 2.35, hookIn: 3.3, hookOut: 6.0, tilt: 5.8,
+  revealStart: 9.0, snap: 17.0, rewind: 19.6, whipToStrip: 21.0, stripStart: 22.0, whipBack: 32.0,
+  explode: 34.2, netIn: 38.6, montage: 44.4, black: 48.0, promptStart: 48.6, enter: 50.9, genStart: 51.2,
+  genSnap: 60.0, thunder1: 61.1, thunder2: 62.6, pullback: 64.0, endStart: 72.4,
+};
+const TITLE = [[{ s: "How AI turns", wt: 600 }], [{ s: "pure noise", serif: 1, color: C.lav }], [{ s: "into an image.", wt: 600 }]];
+const PROMPT = "a lighthouse in a storm";
+
+// ---------- background ----------
+function background(ctx, t, k = 1) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, C.bg0); bg.addColorStop(1, C.bg1);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  if (k < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - k})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// ===========================================================================
+// SCENE A · 0–21 s · title over static → hook → 3D pixel cloud → the reveal → rewind
+// ===========================================================================
+const CAM_A = [
+  { t: 0, yaw: 0, pitch: 0, dist: 1500, spread: 0, ty: 0 },
+  { t: 5.6, yaw: 0, pitch: 0, dist: 1440, spread: 0, ty: 0, hold: 1 },
+  { t: 8.6, yaw: -.16, pitch: .36, dist: 1640, spread: 1, ty: 0 },
+  { t: 12.8, yaw: .2, pitch: .16, dist: 1700, spread: .7, ty: -40 },
+  { t: 16.7, yaw: 0, pitch: 0, dist: 1500, spread: 0, ty: 0, hold: 1 },
+  { t: 19.6, yaw: 0, pitch: 0, dist: 1420, spread: 0, ty: 0, hold: 1 },
+  { t: 21.0, yaw: .5, pitch: .1, dist: 4200, spread: .4, ty: 0 },
+];
+function sceneA(t) {
+  background(w, t);
+  const c = track(CAM_A, t), cam = { ...camDefault, ...c, f: 1500 };
+  // noise level s over time
+  let s = 1;
+  if (t > T.revealStart) s = 1 - sm(prog(t, T.revealStart, T.snap));
+  if (t > T.rewind) s = eio(prog(t, T.rewind + .15, T.whipToStrip));           // time runs backwards
+  const live = 1 - prog(t, T.tilt, T.tilt + .9), frame = Math.floor(t * 15);
+  const dim = t < T.titleOut + .8 ? lerp(.42, 1, eo(prog(t, T.titleOut, T.titleOut + .8))) : 1;
+  const sb = Math.sin(s * Math.PI / 2), desat = prog(t, T.rewind, T.rewind + .4) * (1 - prog(t, T.whipToStrip - .2, T.whipToStrip));
+  tilePanel(w, cam, {
+    z: i => -NZ.a.z[i] * 200 * sb * c.spread, gap: lerp(1.04, .9, c.spread * sb),
+    color: i => { const r = mixPx(IMG.sunset, NZ.a, s, i, 0, live, frame), gg = mixPx(IMG.sunset, NZ.a, s, i, 1, live, frame), b = mixPx(IMG.sunset, NZ.a, s, i, 2, live, frame);
+      const l = (r + gg + b) / 3; return [lerp(r, l, desat) * dim, lerp(gg, l, desat) * dim, lerp(b, l, desat) * dim]; },
+  });
+  // snap flash
+  const fl = Math.exp(-Math.max(0, t - T.snap) * 9) * (t >= T.snap ? 1 : 0) * .55 + (t >= T.rewind ? Math.exp(-(t - T.rewind) * 14) * .7 : 0);
+  if (fl > .01) { w.fillStyle = `rgba(255,248,232,${fl})`; w.fillRect(0, 0, W, H); }
+  return { blur: Math.max(0, (t - (T.whipToStrip - .45)) * 40) * (t < T.whipToStrip + .6 ? 1 : 0), whip: prog(t, T.whipToStrip - .45, T.whipToStrip) };
+}
+function textA(t) {
+  // title types on, then pushes through the lens and defocuses
+  if (t < T.titleOut + .9) {
+    const total = TITLE.reduce((a, l) => a + l.reduce((b, p) => b + p.s.length, 0), 0);
+    let shown = Math.floor(total * prog(t, T.typeStart, T.typeEnd));
+    const k = prog(t, T.titleOut, T.titleOut + .85), scale = 1 + eio(k) * 1.1, blur = eio(k) * 26, a = 1 - eio(prog(k, .25, 1));
+    const sizes = [74, 150, 74], ys = [700, 880, 1010];
+    const sc = scrimFor(150, 600, 780, 470);
+    g.save(); g.globalAlpha = a * sc.a * .9; g.fillStyle = `rgb(${C.scrim})`; g.shadowColor = `rgba(${C.scrim},1)`; g.shadowBlur = 90; g.beginPath(); g.roundRect(190, 630, 700, 410, 60); g.fill(); g.restore();
+    g.save(); g.translate(540, 860); g.scale(scale, scale); g.translate(-540, -860); g.filter = blur > .3 ? `blur(${blur}px)` : "none";
+    let lastX = 0, lastY = 0;
+    TITLE.forEach((line, li) => {
+      const parts = line.map(p => { const n = Math.min(p.s.length, shown); shown -= n; return { ...p, s: p.s.slice(0, n) }; });
+      const full = measureParts(line, sizes[li]);       // centre on the FULL line so typing doesn't jitter
+      let x = 540 - full / 2; g.textBaseline = "alphabetic";
+      for (const p of parts) { g.font = p.serif ? FONT.serif(sizes[li] * 1.12) : FONT.sans(sizes[li], p.wt || 800); g.fillStyle = p.color || C.cream; g.globalAlpha = a; g.textAlign = "left"; g.fillText(p.s, x, ys[li]); x += g.measureText(p.s).width; if (p.s.length) { lastX = x; lastY = ys[li]; } }
+    });
+    const typing = t < T.typeEnd + .5, blink = Math.floor(t * 2.4) % 2 === 0;
+    if (typing || blink) if (t < T.titleOut) { g.fillStyle = C.lav; g.globalAlpha = a; g.fillRect(lastX + 8, lastY - 62, 7, 74); }
+    g.restore();
+    if (k < .02 && t > T.typeStart) BOXES.push({ id: "title", x: 160, y: 620, w: 760, h: 420, a: 1, contrast: sc.contrast, size: 74 });
+  }
+  caption("hook", [[{ s: "Every AI image you've seen" }], [{ s: "started as " }, { s: "this.", serif: 1, color: C.lav }]], t, T.hookIn, T.hookOut, 760, 70);
+  if (t > T.revealStart && t < T.snap + .2) { const step = Math.min(50, 1 + Math.floor(49 * sm(prog(t, T.revealStart, T.snap)))); pill("step", `Step ${step} of 50`, t, T.revealStart + .3, T.snap + .2, 300); }
+  caption("never", [[{ s: "It never drew" }], [{ s: "a single " }, { s: "line.", serif: 1, color: C.lav }]], t, T.snap + .6, T.rewind - .05, 1110, 74);
+  caption("how", [[{ s: "So how does it know" }], [{ s: "what to remove?" }]], t, T.rewind + .1, T.whipToStrip + .9, 330, 70);
+}
+
+// ===========================================================================
+// SCENE B · 21–33.6 s · training data: a real photo buried in noise, step by step
+// ===========================================================================
+const STRIP = [0, .35, .6, .82, 1], GAPX = 1700;
+const IN_Y = -1720, OUT_Y = 1720, SMALL = .55;   // scene C stack
+const CAM_B = [
+  { t: 21.0, tx: -1300, yaw: .6, pitch: .12, dist: 3300 },
+  { t: 22.6, tx: -300, yaw: .42, pitch: .10, dist: 2500 },
+  { t: 30.8, tx: GAPX * 4, yaw: .34, pitch: .08, dist: 2400 },
+  { t: 31.9, tx: GAPX * 4, yaw: .3, pitch: .06, dist: 2300, hold: 1 },
+  { t: 33.0, tx: GAPX * 2, yaw: 0, pitch: 0, dist: 1500, hold: 1 },
+];
+function sceneB(t) {
+  background(w, t);
+  const c = track(CAM_B, t), cam = { ...camDefault, ...c, ty: 0, tz: 0 };
+  STRIP.forEach((sv, k) => {
+    // noise gets "sprayed" on each frame as the camera reaches it
+    const arrive = 22.6 + k * 1.9, sNow = k === 0 ? 0 : lerp(STRIP[k - 1], sv, eio(prog(t, arrive - .6, arrive + .5)));
+    flatPanel(w, cam, tex("saturn", "b", Math.round(sNow * 40) / 40), { cx: k * GAPX, sub: 3, border: "rgba(244,236,220,.25)" });
+    if (k < 4) { // gold chevrons between frames: "noise is added here"
+      const p = proj(cam, k * GAPX + GAPX / 2, 0, 0); if (p[2] > 60) { const s = 1500 / p[2] * 1.1, a = win(t, arrive - .2, 40, .5, .1);
+        w.save(); w.globalAlpha = a; w.strokeStyle = C.gold; w.lineWidth = 12 * s; w.lineCap = "round"; w.lineJoin = "round";
+        for (let q = 0; q < 2; q++) { w.beginPath(); w.moveTo(p[0] - 30 * s + q * 46 * s, p[1] - 44 * s); w.lineTo(p[0] + 4 * s + q * 46 * s, p[1]); w.lineTo(p[0] - 30 * s + q * 46 * s, p[1] + 44 * s); w.stroke(); }
+        w.restore(); } }
+  });
+  const inBlur = Math.max(0, 1 - (t - T.whipToStrip) / .5) * 30, outBlur = t > T.whipBack ? Math.sin(prog(t, T.whipBack, 33.0) * Math.PI) * 34 : 0;
+  return { blur: Math.max(inBlur, outBlur), whip: 1 };
+}
+function textB(t) {
+  caption("b1", [[{ s: "First, it takes" }], [{ s: "a " }, { s: "real", serif: 1, color: C.lav }, { s: " photo…" }]], t, 22.4, 26.6, 300, 74);
+  caption("b2", [[{ s: "…and buries it in noise," }], [{ s: "step by step." }]], t, 27.0, 31.8, 300, 70);
+}
+
+// ===========================================================================
+// SCENE C · 33.6–48 s · noisy photo = photo + noise → the AI learns to guess the noise
+// ===========================================================================
+const NET = (() => { const layers = [5, 7, 7, 5], nodes = []; layers.forEach((n, li) => { for (let i = 0; i < n; i++) nodes.push({ li, x: (i - (n - 1) / 2) * 200, y: -540 + li * 360, z: 0 }); }); return { layers, nodes }; })();
+const CAM_C = [
+  { t: 33.0, ty: 0, yaw: 0, pitch: 0, dist: 1500 },
+  { t: 34.2, ty: 0, yaw: 0, pitch: 0, dist: 1500, hold: 1 },
+  { t: 36.4, ty: 0, yaw: -.62, pitch: .1, dist: 2100 },
+  { t: 38.2, ty: 0, yaw: -.55, pitch: .08, dist: 2200, hold: 1 },
+  { t: 39.4, ty: IN_Y, yaw: -.1, pitch: -.05, dist: 1900 },          // settle on the noisy photo (now small, top of the stack)
+  { t: 41.4, ty: OUT_Y, yaw: .08, pitch: .1, dist: 1900 },           // crane down through the network to the AI's guess
+  { t: 42.6, ty: 0, yaw: .1, pitch: .06, dist: 3900 },               // pull back: the whole machine fills the frame
+  { t: 44.2, ty: 0, yaw: -.02, pitch: .04, dist: 3800 },
+  { t: 45.4, ty: -200, yaw: -.1, pitch: .02, dist: 2500 },          // push into the network: photos rain in
+  { t: 48.0, ty: -260, yaw: .06, pitch: 0, dist: 2150 },
+];
+function matchAt(t) { const it = Math.floor(prog(t, 41.4, 44.2) * 10); return clamp(it / 10) ** .7; }
+function sceneC(t) {
+  background(w, t);
+  const c = track(CAM_C, t), cam = { ...camDefault, ...c, tz: 0 };
+  const sv = .6, ab = Math.cos(sv * Math.PI / 2), sb = Math.sin(sv * Math.PI / 2);
+  // exploded view: the noise layer lifts off the photo, then settles back
+  const ex = eio(prog(t, T.explode, T.explode + 1.6)) * (1 - eio(prog(t, 37.6, 38.6)));
+  if (t < 39.4) {
+    tilePanel(w, cam, { gap: 1.03, color: i => ex > .02 ? [IMG.saturn[i * 3] * lerp(ab, 1, ex), IMG.saturn[i * 3 + 1] * lerp(ab, 1, ex), IMG.saturn[i * 3 + 2] * lerp(ab, 1, ex)] : [mixPx(IMG.saturn, NZ.b, sv, i, 0), mixPx(IMG.saturn, NZ.b, sv, i, 1), mixPx(IMG.saturn, NZ.b, sv, i, 2)] });
+    if (ex > .02) tilePanel(w, cam, { cz: -ex * 900, gap: .86, color: i => { const v = clamp(.5 + .32 * NZ.b.e[i * 3]); return [v, v, v, .78 * ex]; } });
+  }
+  if (t >= 38.4) {
+    const shrink = eio(prog(t, 38.4, 39.4)), inY = lerp(0, IN_Y, shrink), inS = lerp(1, SMALL, shrink);
+    const swap = t > T.montage ? Math.floor((t - T.montage) * lerp(6, 22, prog(t, T.montage, 47.6))) : -1;
+    const pics = ["sunset", "apple", "lighthouse", "saturn"], name = swap < 0 ? "saturn" : pics[swap % 4], nz = swap < 0 ? "b" : ["a", "c", "d", "b"][swap % 4];
+    flatPanel(w, cam, tex(name, nz, sv), { cy: inY, scale: inS, border: "rgba(244,236,220,.3)" });
+    // network
+    const netA = eo(prog(t, 39.0, 39.8)), m = matchAt(t), speed = t > T.montage ? lerp(1, 4, prog(t, T.montage, 47.6)) : 1;
+    const P = NET.nodes.map(n => proj(cam, n.x, n.y, n.z));
+    w.save(); w.globalAlpha = netA; w.lineWidth = 2;
+    let base = 0; const idx = NET.layers.map(n => { const r = base; base += n; return r; });
+    for (let li = 0; li < 3; li++) for (let a = 0; a < NET.layers[li]; a++) for (let b = 0; b < NET.layers[li + 1]; b++) {
+      const p = P[idx[li] + a], q = P[idx[li + 1] + b]; w.strokeStyle = "rgba(185,166,242,.16)"; w.beginPath(); w.moveTo(p[0], p[1]); w.lineTo(q[0], q[1]); w.stroke();
+      if (t > 39.8) { // forward pass (lavender) then backward correction (gold)
+        const ph = ((t - 39.8) * speed * 2.7 + hash(a, b * 9 + li) * .3) % 1; const fwd = ph < .5, k = fwd ? ph * 2 : 1 - (ph - .5) * 2, lk = (k * 3 - li);
+        if (lk > 0 && lk < 1) { const x = lerp(p[0], q[0], lk), y = lerp(p[1], q[1], lk); w.fillStyle = fwd ? C.lav : C.gold; w.beginPath(); w.arc(x, y, 9 * 1500 / p[2], 0, 6.2832); w.fill(); }
+      }
+    }
+    P.forEach(p => { const r = 34 * 1500 / p[2]; w.fillStyle = "#1d2440"; w.strokeStyle = C.lav; w.lineWidth = 3; w.beginPath(); w.arc(p[0], p[1], r, 0, 6.2832); w.fill(); w.stroke(); });
+    w.restore();
+    // the AI's guess of the noise: wrong at first, then it matches
+    const key = Math.round(m * 24) / 24, gc = texGuess(key);
+    flatPanel(w, cam, gc, { cy: OUT_Y, scale: SMALL, alpha: eo(prog(t, 40.2, 41.0)), border: m > .95 ? C.gold : "rgba(244,236,220,.3)" });
+    // montage: thumbnails of many photos rain down into the network, faster and faster
+    if (t > T.montage) {
+      const rate = lerp(5, 16, prog(t, T.montage, 47.8)), pics = ["sunset", "apple", "lighthouse", "saturn"];
+      for (let q = 0; q < 26; q++) {
+        const ph = ((t - T.montage) * rate / 6 + q / 26) % 1, id = Math.floor((t - T.montage) * rate / 6 + q / 26) * 26 + q;
+        const x = (hash(id, 1) - .5) * 1700, y = lerp(-2300, -620, ei(ph)), sc = lerp(.16, .1, ph);
+        flatPanel(w, cam, tex(pics[id % 4], ["a", "b", "c", "d"][(id >> 2) % 4], .6), { cx: x, cy: y, cz: (hash(id, 2) - .5) * 600, scale: sc, sub: 1, alpha: Math.sin(ph * Math.PI) * prog(t, T.montage, T.montage + .4) });
+      }
+    }
+    // the stream between the stack: photo → network → guess
+    w.save(); w.globalCompositeOperation = "lighter";
+    for (let q = 0; q < 10; q++) for (const [y0, y1] of [[IN_Y + PH * SMALL / 2, -560], [560, OUT_Y - PH * SMALL / 2]]) {
+      const ph = ((t - 39.6) * speed * .8 + q / 10) % 1, a = netA * .7 * Math.sin(ph * Math.PI), p = proj(cam, (hash(q, y0 | 0) - .5) * 500, lerp(y0, y1, ph), 0);
+      w.fillStyle = `rgba(185,166,242,${a})`; w.beginPath(); w.arc(p[0], p[1], 7 * 1500 / p[2], 0, 6.2832); w.fill(); }
+    w.restore();
+  }
+  const swish = t > T.montage ? (prog(t, 47.2, 48) * 22) : 0;
+  return { blur: t < 33.3 ? 34 * (1 - prog(t, 33.0, 33.3)) : swish, whip: 1 };
+}
+const guessCache = new Map();
+function texGuess(m) {
+  if (guessCache.has(m)) return guessCache.get(m);
+  const c = document.createElement("canvas"); c.width = GW; c.height = GH; const x = c.getContext("2d"), id = x.createImageData(GW, GH);
+  for (let i = 0; i < N; i++) { const v = clamp(.5 + .32 * lerp(NZ.d.e[i * 3], NZ.b.e[i * 3], m)) * 255; id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; }
+  x.putImageData(id, 0, 0); guessCache.set(m, c); return c;
+}
+function textC(t) {
+  caption("c1", [[{ s: "A noisy photo is just" }], [{ s: "photo ", serif: 1, color: C.lav }, { s: "+ " }, { s: "noise.", serif: 1, color: C.gold }]], t, 34.4, 38.4, 300, 74);
+  caption("c2", [[{ s: "The AI's only job:" }], [{ s: "guess the " }, { s: "noise.", serif: 1, color: C.gold }]], t, 39.6, 42.3, 300, 74);
+  if (t > 41.2 && t < 44.5) pill("match", `AI's guess · ${Math.round(18 + 80 * matchAt(t))}% right`, t, 41.4, 44.5, 1290, { dot: matchAt(t) > .95 ? C.gold : C.lav });
+  caption("c3", [[{ s: "Then repeat it on" }], [{ s: "millions", serif: 1, color: C.lav }, { s: " of photos." }]], t, 44.5, 47.9, 300, 74);
+}
+
+// ===========================================================================
+// SCENE D · 48–64 s · smash to black → you type a prompt → the AI removes noise, guided by words
+// ===========================================================================
+const CAM_D = [
+  { t: 51.0, yaw: 0, pitch: 0, dist: 2600 },
+  { t: 51.6, yaw: -.28, pitch: .3, dist: 1700 },
+  { t: 56.0, yaw: .18, pitch: .14, dist: 1650 },
+  { t: 59.6, yaw: 0, pitch: 0, dist: 1500, hold: 1 },
+  { t: 64.0, yaw: 0, pitch: 0, dist: 1440, hold: 1 },
+];
+function beam(t, i) { // lighthouse lamp beam sweeping after the image is finished
+  const k = prog(t, T.genSnap + .3, T.genSnap + 1.2); if (k <= 0) return 0;
+  const gx = i % GW, gy = (i / GW) | 0, dx = gx - 26.5, dy = gy - 27, ang = Math.atan2(dy, dx), b = (t - T.genSnap) * 1.9;
+  const d = Math.abs(Math.atan2(Math.sin(ang - b), Math.cos(ang - b)));
+  return k * clamp(1 - d / .2) * clamp(1 - Math.hypot(dx, dy) / 60) * (gy < 62 ? .9 : .4);
+}
+function flash(t) { return Math.exp(-Math.max(0, t - T.thunder1) * 7) * (t > T.thunder1 ? 1 : 0) * .8 + Math.exp(-Math.max(0, t - T.thunder2) * 6) * (t > T.thunder2 ? 1 : 0) * .55; }
+function sceneD(t) {
+  background(w, t, eo(prog(t, T.genStart - .2, T.genStart + .3)));
+  if (t < T.genStart - .2) { w.fillStyle = "#000"; w.fillRect(0, 0, W, H); return { blur: 0 }; }
+  const c = track(CAM_D, t), cam = { ...camDefault, ...c, tx: 0, ty: 0, tz: 0 };
+  const k = prog(t, T.genStart, T.genSnap), s = 1 - sm(k), sb = Math.sin(s * Math.PI / 2), fl = flash(t);
+  const slam = 1 + (1 - eo(prog(t, T.genStart, T.genStart + .5))) * .35;
+  tilePanel(w, cam, {
+    scale: slam, z: i => -NZ.c.z[i] * 220 * sb, gap: lerp(1.04, .88, sb),
+    color: i => { const bm = beam(t, i); return [0, 1, 2].map(j => clamp(mixPx(IMG.lighthouse, NZ.c, s, i, j) + bm * [1, .9, .55][j] + fl * .55 * (1 - ((i / GW) | 0) / GH))); },
+  });
+  // peeling noise: every few steps a thin sheet of removed noise lifts toward the camera and dissolves
+  if (t < T.genSnap) for (let q = 0; q < 3; q++) {
+    const per = .62, ph = ((t - T.genStart) / per + q / 3) % 1, a = (1 - ph) * .5 * sb; if (a < .03) continue;
+    tilePanel(w, cam, { flat: 1, cz: -ph * 1100, gap: .5, color: i => (i * 7 + q * 13) % 9 === 0 ? (v => [v, v, v, a])(clamp(.5 + .32 * NZ.c.e[i * 3])) : null });
+  }
+  // the words steer: lavender light streams from the prompt bar down into the image
+  if (t > T.genStart + .4 && t < T.genSnap) {
+    w.save(); w.globalCompositeOperation = "lighter";
+    for (let q = 0; q < 14; q++) { const ph = ((t - T.genStart) * .9 + q / 14) % 1, x0 = 540 + (hash(q, 3) - .5) * 300, x1 = 540 + (hash(q, 5) - .5) * 1000, y = lerp(390, 1500, ph);
+      const x = lerp(x0, x1, ph); w.fillStyle = `rgba(185,166,242,${.55 * (1 - ph)})`; w.beginPath(); w.arc(x, y, 7, 0, 6.2832); w.fill();
+      const tr = w.createLinearGradient(x, y - 90, x, y); tr.addColorStop(0, "rgba(185,166,242,0)"); tr.addColorStop(1, `rgba(185,166,242,${.35 * (1 - ph)})`); w.fillStyle = tr; w.fillRect(x - 3, y - 90, 6, 90); }
+    w.restore();
+  }
+  const hit = t >= T.genSnap ? Math.exp(-(t - T.genSnap) * 8) * .5 : 0; if (hit > .01) { w.fillStyle = `rgba(255,248,232,${hit})`; w.fillRect(0, 0, W, H); }
+  return { blur: 0 };
+}
+function textD(t) {
+  if (t >= T.promptStart && t < T.pullback) {
+    const n = Math.floor(PROMPT.length * prog(t, T.promptStart + .2, T.enter - .3)), txt = PROMPT.slice(0, n);
+    const move = eio(prog(t, T.enter, T.enter + .7)), y = lerp(880, 300, move);
+    g.font = FONT.mono(100); const unit = g.measureText(PROMPT + "  50/50").width / 100;
+    const size = Math.min(lerp(52, 40, move), (880 - 140) / unit);
+    g.font = FONT.mono(size); const fullW = g.measureText(PROMPT).width, step = Math.min(50, Math.max(1, Math.floor(50 * sm(prog(t, T.genStart, T.genSnap))) + (t > T.genStart ? 1 : 0)));
+    const right = t > T.genStart + .2 ? (t >= T.genSnap ? "  ✓" : `  ${String(step).padStart(2, " ")}/50`) : "";
+    g.font = FONT.mono(size * .8); const rw = right ? g.measureText("  50/50").width : 0;
+    const bw = fullW + rw + 120, bh = size * 2.4, bx = 540 - bw / 2, a = eo(prog(t, T.promptStart, T.promptStart + .3)) * (1 - prog(t, T.pullback - .6, T.pullback));
+    const sc = scrimFor(bx, y, bw, bh);
+    g.save(); g.globalAlpha = a * Math.max(.9, sc.a); g.fillStyle = `rgb(${C.scrim})`; g.beginPath(); g.roundRect(bx, y, bw, bh, 26); g.fill();
+    g.globalAlpha = a; g.strokeStyle = C.lav; g.lineWidth = 3; g.stroke();
+    g.fillStyle = C.lav; g.font = FONT.mono(size); g.textBaseline = "middle"; g.textAlign = "left"; g.fillText("›", bx + 30, y + bh / 2 + 2);
+    g.fillStyle = C.cream; g.fillText(txt, bx + 72, y + bh / 2 + 2);
+    const cx = bx + 72 + g.measureText(txt).width;
+    if (t < T.enter + .3 && Math.floor(t * 2.6) % 2 === 0) { g.fillStyle = C.lav; g.fillRect(cx + 4, y + bh * .27, 5, bh * .46); }
+    if (right) { g.font = FONT.mono(size * .8); g.fillStyle = t >= T.genSnap ? C.gold : "rgba(244,236,220,.7)"; g.fillText(right, bx + 72 + fullW, y + bh / 2 + 2); }
+    g.restore();
+    BOXES.push({ id: "prompt", x: bx, y, w: bw, h: bh, a, contrast: Math.max(sc.contrast, 7), size });
+  }
+  caption("d1", [[{ s: "Your words " }, { s: "steer", serif: 1, color: C.lav }], [{ s: "every single guess." }]], t, 53.0, 57.8, 1150, 72);
+}
+
+// ===========================================================================
+// SCENE E · 64–72.4 s · pull back through all 50 guesses (a tunnel of time)
+// ===========================================================================
+function sceneE(t) {
+  background(w, t);
+  const k = eio(prog(t, T.pullback, 70.8));
+  const cam = { ...camDefault, tx: lerp(0, 1500, k), ty: lerp(0, -900, k), tz: lerp(0, 3500, k), yaw: lerp(0, -.5, k), pitch: lerp(0, .3, k), dist: lerp(1440, 6200, k), f: lerp(1500, 1900, k) };
+  const items = [];
+  for (let q = 0; q < 50; q++) {   // q = 49 is the final image (nearest), q = 0 is pure static (farthest)
+    const back = 49 - q, ang = back * .34, r = back * 70;
+    items.push({ q, x: Math.cos(ang) * r * 1.4 + back * 40, y: Math.sin(ang) * r * .9 - back * 30, z: back * 520 });
+  }
+  items.sort((a, b) => b.z - a.z);
+  for (const it of items) {
+    const s = 1 - sm(it.q / 49), img = it.q === 49 ? finalLighthouse(t) : tex("lighthouse", "c", Math.round(s * 60) / 60);
+    const dz = proj(cam, it.x, it.y, it.z)[2]; const fog = clamp(1 - (dz - 2500) / 16000);
+    flatPanel(w, cam, img, { cx: it.x, cy: it.y, cz: it.z, sub: it.q > 44 ? 3 : 1, alpha: lerp(.25, 1, fog), border: it.q === 49 ? "rgba(227,179,65,.8)" : "rgba(244,236,220,.18)" });
+  }
+  return { blur: 0 };
+}
+let finalCanvas = null, finalKey = "";
+function finalLighthouse(t) { // the finished image with its sweeping beam, as a canvas
+  const key = (Math.round(t * 30) / 30).toFixed(3); if (finalKey === key) return finalCanvas;
+  finalCanvas = finalCanvas || document.createElement("canvas"); finalCanvas.width = GW; finalCanvas.height = GH;
+  const x = finalCanvas.getContext("2d"), id = x.createImageData(GW, GH);
+  for (let i = 0; i < N; i++) { const bm = beam(t, i); for (let j = 0; j < 3; j++) id.data[i * 4 + j] = clamp(IMG.lighthouse[i * 3 + j] + bm * [1, .9, .55][j]) * 255; id.data[i * 4 + 3] = 255; }
+  x.putImageData(id, 0, 0); finalKey = key; return finalCanvas;
+}
+function textE(t) {
+  caption("e1", [[{ s: "50 guesses." }], [{ s: "One ", }, { s: "image.", serif: 1, color: C.gold }]], t, 65.2, 71.6, 300, 92);
+}
+
+// ===========================================================================
+// SCENE F · 72.4–78 s · the pixels fly together into the handle
+// ===========================================================================
+let END = null;
+function buildEnd() {
+  const off = document.createElement("canvas"); off.width = W; off.height = H; const o = off.getContext("2d");
+  o.fillStyle = "#000"; o.textAlign = "center"; o.font = FONT.sans(124, 800); o.fillText("@zbacktrack", 540, 930);
+  const d = o.getImageData(0, 0, W, H).data, pts = [], r = rng(77);
+  for (let y = 780; y < 980; y += 9) for (let x = 90; x < 990; x += 9) if (d[(y * W + x) * 4 + 3] > 140) pts.push([x, y]);
+  END = pts.map(([x, y], k) => ({ x, y, src: Math.floor(r() * N), d: r() * .5 }));
+}
+function sceneF(t) {
+  background(w, t);
+  if (!END) buildEnd();
+  const k = prog(t, T.endStart, T.endStart + 1.8);
+  for (const p of END) {
+    const gx = p.src % GW, gy = (p.src / GW) | 0, sx = 540 + (gx - 27) * 15, sy = 960 + (gy - 48) * 15;   // start: where that pixel sat in the image
+    const kk = eio(clamp((k - p.d * .4) / .6)), x = lerp(sx, p.x, kk), y = lerp(sy, p.y, kk) - Math.sin(kk * Math.PI) * 120;
+    const col = [0, 1, 2].map(j => lerp(IMG.lighthouse[p.src * 3 + j], [244, 236, 220][j] / 255, kk) * 255 | 0);
+    w.fillStyle = `rgb(${col})`; const sz = lerp(15, 9.6, kk); w.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+  }
+  return { blur: 0 };
+}
+function textF(t) {
+  const a = win(t, T.endStart + 2.0, DUR + 1, .6, .1); if (a <= 0) return;
+  g.save(); g.globalAlpha = a; g.font = FONT.sans(46, 600); g.fillStyle = "rgba(244,236,220,.85)"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+  g.fillText("Follow for more", 540, 1080); g.restore();
+  BOXES.push({ id: "follow", x: 360, y: 1040, w: 360, h: 56, a, contrast: 12, size: 46 });
+  if (t > T.endStart + 1.8) BOXES.push({ id: "handle", x: 160, y: 820, w: 760, h: 140, a: 1, contrast: 14, size: 124 });
+}
+
+// ---------- frame ----------
+const grain = document.createElement("canvas"); grain.width = W; grain.height = H;
+{ const gc = grain.getContext("2d"), id = gc.createImageData(W, H), r = rng(7); for (let i = 0; i < id.data.length; i += 4) { const v = r() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; } gc.putImageData(id, 0, 0); }
+function seek(t) {
+  BOXES = [];
+  w.setTransform(1, 0, 0, 1, 0, 0); w.globalAlpha = 1; w.filter = "none";
+  let fx;
+  if (t < T.whipToStrip) fx = sceneA(t);
+  else if (t < 33.3) fx = sceneB(t);
+  else if (t < T.black) fx = sceneC(t);
+  else if (t < T.pullback) fx = sceneD(t);
+  else if (t < T.endStart) fx = sceneE(t);
+  else fx = sceneF(t);
+  // composite the world: optional lens blur (whip pans / focus pulls)
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.filter = fx.blur > .5 ? `blur(${fx.blur.toFixed(1)}px)` : "none";
+  g.drawImage(wc, 0, 0); g.filter = "none";
+  // grain + vignette (subtle, keeps it filmic without mushing detail)
+  g.globalAlpha = .035; g.globalCompositeOperation = "overlay"; g.drawImage(grain, 0, 0); g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+  const vg = g.createRadialGradient(540, 960, 520, 540, 960, 1240); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.42)"); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  // text on top
+  textA(t); textB(t); textC(t); textD(t); textE(t); textF(t);
+  // fade from/to black at the very ends
+  const fade = Math.max(1 - prog(t, 0, .2), prog(t, DUR - .6, DUR));
+  if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
+  return BOXES.map(b => ({ id: b.id, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
+}
+
+// ---------- sound cues (read by mix.py; every time comes from T above) ----------
+function cues() {
+  const c = [];
+  const total = TITLE.reduce((a, l) => a + l.reduce((b, p) => b + p.s.length, 0), 0);
+  for (let i = 0; i < total; i++) if (TITLE.flat().map(p => p.s).join("")[i] !== " ") c.push({ t: T.typeStart + (T.typeEnd - T.typeStart) * i / total, s: "key" });
+  for (let i = 0; i < PROMPT.length; i++) if (PROMPT[i] !== " ") c.push({ t: T.promptStart + .2 + (T.enter - .5 - T.promptStart) * i / PROMPT.length, s: "key" });
+  c.push({ t: T.enter, s: "enter" });
+  c.push({ t: T.titleOut, s: "whoosh_big" }, { t: T.titleOut + .45, s: "sub" });
+  c.push({ t: T.tilt, s: "swell" });
+  c.push({ t: T.snap, s: "braam" });
+  c.push({ t: T.rewind - .9, s: "reverse" }, { t: T.rewind, s: "rewind" });
+  c.push({ t: T.whipToStrip - .4, s: "whoosh" });
+  for (let k = 1; k < 5; k++) c.push({ t: 22.6 + k * 1.9 - .5, s: "spray" });
+  c.push({ t: T.whipBack, s: "whoosh" });
+  c.push({ t: T.explode, s: "lift" }, { t: 37.6, s: "settle" });
+  c.push({ t: 39.4, s: "whoosh" });
+  c.push({ t: 44.0, s: "match" });
+  c.push({ t: T.black, s: "cut" });
+  c.push({ t: T.genStart, s: "slam" });
+  c.push({ t: T.genSnap, s: "impact" }, { t: T.thunder1, s: "thunder" }, { t: T.thunder2, s: "thunder2" });
+  c.push({ t: T.pullback + .2, s: "whoosh_long" });
+  c.push({ t: T.endStart + .2, s: "shimmer" }, { t: T.endStart + 1.7, s: "endhit" });
+  return c.sort((a, b) => a.t - b.t);
+}
+
+window.DUR = DUR; window.SAFE = SAFE; window.T = T;
+window.ready = (async () => {
+  await Promise.all([document.fonts.load(FONT.sans(80, 800)), document.fonts.load(FONT.sans(80, 600)), document.fonts.load(FONT.serif(80)), document.fonts.load(FONT.mono(40))]);
+  window.seek = seek; window.CUES = cues(); seek(0);
+  return { tiles: N, cues: window.CUES.length };
+})();
+</script>
+</body>
+</html>
