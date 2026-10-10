@@ -202,7 +202,8 @@ function typeLine(text, t, o) {
       g.globalAlpha = kk * (1 - out); g.fillText(ch, x, o.y + (1 - kk) * 34); x += cw; }
   }
   g.restore();
-  BOXES.push({ id: o.id, group: o.group, words: text.split(" ").length, x: x0, y: boxY, w: tw, h: boxH, a: (1 - out) * eo(a0), contrast, size: o.size });
+  // a = what's visible (overlap checks); read = when it's a reading moment (fully in, not flying out)
+  BOXES.push({ id: o.id, group: o.group, words: text.split(" ").length, x: x0, y: boxY, w: tw, h: boxH, a: (1 - out) * eo(a0), read: out > .02 ? 0 : o.mode === "write" ? (eio(prog(t, o.t0, o.t0 + (o.dur || .9))) > .98 ? eo(a0) : 0) : eo(a0), contrast, size: o.size });
 }
 function pill(id, text, t, t0, t1, y, { dot = LAV, size = 40 } = {}) {
   const a = win(t, t0, t1, .35, .3); if (a <= 0) return;
@@ -389,7 +390,7 @@ function seek(tt) {
   // grain + vignette, then fades
   grainV(fr);
   const fade = prog(tt, DUR - .5, DUR); if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
-  return BOXES.map(b => ({ id: b.id, group: b.group, words: b.words, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
+  return BOXES.map(b => ({ id: b.id, group: b.group, words: b.words, read: b.read, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
 }
 
 function text(t) {
@@ -401,12 +402,12 @@ function text(t) {
   typeLine("Nobody shows you this part.", t, { id: "h4", font: F.inter(40, 600), size: 40, y: 1330, color: CREAM, t0: 2.3, t1: T.hookOut + .3 });
   // 2 · PROMPT now lives in the app card (opening)
   // 3 · it starts with noise
-  typeLine("It doesn't start", t, { id: "p1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.push, t1: T.startsThis - .1, ls: -2 });
-  typeLine("with a blank page.", t, { id: "p2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.push + .75, t1: T.startsThis - .1, ls: -2 });
+  typeLine("It doesn't start with", t, { id: "p1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.push, t1: T.startsThis - .1, ls: -2 });
+  typeLine("a blank page.", t, { id: "p2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.push + .45, t1: T.startsThis - .1, ls: -2 });
   typeLine("It starts with", t, { id: "p3", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.startsThis, t1: T.question - .1, ls: -2 });
   typeLine("this.", t, { id: "p4", font: F.script(230), size: 230, y: 1080, color: LAV, t0: T.startsThis + .45, t1: T.question - .1, mode: "write", dur: .6 });
   typeLine("Then it asks", t, { id: "q1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.question, t1: T.belong - .05, ls: -2 });
-  typeLine("one question…", t, { id: "q2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.question + .7, t1: T.belong - .05, ls: -2 });
+  typeLine("one question…", t, { id: "q2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.question + .5, t1: T.belong - .05, ls: -2 });
   typeLine("what doesn't belong?", t, { id: "q3", font: F.script(150), size: 150, y: 1000, color: CREAM, t0: T.belong, t1: T.steps + .1, mode: "write", dur: 1.0 });
   // 4 · the steps
   if (t > T.steps - .1 && t < T.snap + 1.4) pill("step", t < T.snap ? `Step ${stepAt(t)} of 50` : "Step 50 of 50  ✓", t, T.steps, T.snap + 1.4, 300, { dot: t < T.snap ? LAV : GOLD });
@@ -424,8 +425,8 @@ function text(t) {
   typeLine("of photos.", t, { id: "m3", group: "mil", font: F.script(150), size: 150, y: 990, x: 600, color: LAV, t0: T.wall + 2.7, t1: 41.3, mode: "write" });
   typeLine("Each one covered in noise.", t, { id: "m4", font: F.inter(64), size: 64, y: 900, color: CREAM, t0: 41.5, t1: T.waveBack + .1, ls: -2 });
   typeLine("Until it learned", t, { id: "m6", font: F.inter(62), size: 62, y: 820, color: CREAM, t0: T.waveBack + .2, t1: T.flyIn + .3, ls: -2 });
-  typeLine("what's noise", t, { id: "m7", font: F.script(140), size: 140, y: 960, color: LAV, t0: T.waveBack + .6, t1: T.flyIn + .3, mode: "write", dur: .7 });
-  typeLine("and what's not.", t, { id: "m8", font: F.inter(62), size: 62, y: 1080, color: CREAM, t0: T.waveBack + 1.5, t1: T.flyIn + .3, ls: -2 });
+  typeLine("what's noise", t, { id: "m7", font: F.script(140), size: 140, y: 960, color: LAV, t0: T.waveBack + .55, t1: T.flyIn + .3, mode: "write", dur: .6 });
+  typeLine("and what's not.", t, { id: "m8", font: F.inter(62), size: 62, y: 1115, color: CREAM, t0: T.waveBack + 1.05, t1: T.flyIn + .3, ls: -2 });
   if (t > T.wall + 1.6 && t < T.flyIn + .2) { const n = Math.floor(lerp(1200, 4800000, ei(prog(t, T.wall + 1.6, T.flyIn)))); pill("count", `${n.toLocaleString("en-US")} photos studied`, t, T.wall + 1.6, T.flyIn + .2, 1290, { dot: GOLD }); }
   // 7 · the payoff poster
   meta(t, win(t, T.poster, T.end + .2, .5, .4), "rgba(15,30,44,.75)");
@@ -475,7 +476,7 @@ function grainV(fr) {
 // ===========================================================================
 // OPENING (0–11 s): poster hook on sky blue → an image-generator app → "Generate" → push into its noise
 // ===========================================================================
-const O = { hookOut: 2.95, cardIn: 3.25, typeA: 4.15, typeB: 6.35, cursor: 6.3, click: 6.95, gen: 7.05, push: 9.7 };
+const O = { hookOut: 3.45, cardIn: 3.75, typeA: 4.6, typeB: 6.7, cursor: 6.7, click: 7.3, gen: 7.4, push: 9.95 };
 const CARD = { x: 110, y: 290, w: 860, h: 1110 }, IMGBOX = { x: 145, y: 660, w: 790, h: 705 };
 const PROMPT_L1 = "a man on a cliff", PROMPT_L2 = "above the clouds";
 function blueSky(t) {
@@ -557,7 +558,7 @@ function opening(t) {
   }
   grainV(fr);
   const fade = 1 - prog(t, 0, .12); if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
-  return BOXES.map(b => ({ id: b.id, group: b.group, words: b.words, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
+  return BOXES.map(b => ({ id: b.id, group: b.group, words: b.words, read: b.read, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1), size: b.size }));
 }
 // letters pop in one by one (scale-overshoot + rise); measured for QA before drawing
 function hookWord(text, font, size, y, t, t0, stagger, color, pop, out = 0) {

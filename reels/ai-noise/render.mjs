@@ -25,12 +25,12 @@ writeFileSync(path.join(here, "out/cues.json"), JSON.stringify(await page.evalua
 const fails = [], SEEN = {}; let FPS = 30;
 function qa(t, boxes) {
   const vis = boxes.filter(b => b.a > 0.02);
-  for (const b of boxes) if (b.a > 0.6 && b.words) { const v = SEEN[b.id] || (SEEN[b.id] = { frames: 0, words: b.words }); v.frames++; }
+  for (const b of boxes) if ((b.read ?? b.a) > 0.6 && b.words) { const v = SEEN[b.id] || (SEEN[b.id] = { frames: 0, words: b.words }); v.frames++; }
   for (const b of vis) {
     if (b.x < SAFE.x0 || b.x + b.w > SAFE.x1 || b.y < SAFE.y0 || b.y + b.h > SAFE.y1)
       fails.push({ t, kind: "outside-safe-zone", id: b.id, box: b });
   }
-  for (const b of boxes.filter(b => b.a > 0.6)) {
+  for (const b of boxes.filter(b => (b.read ?? b.a) > 0.6)) {
     if (b.contrast < 7) fails.push({ t, kind: "low-contrast", id: b.id, contrast: b.contrast });
     if (b.size < 36) fails.push({ t, kind: "text-too-small", id: b.id, size: b.size });
   }
@@ -47,7 +47,10 @@ const grab = async t => {
   return Buffer.from(b64, "base64");
 };
 
-if (mode === "stills") {
+if (mode === "qa") {   // every frame's text checks, no video encode
+  FPS = +(rest[0] || 30); const dur = +(process.env.END || await page.evaluate(() => window.DUR)), n = Math.round(dur * FPS);
+  for (let i = 0; i < n; i++) qa(i / FPS, await page.evaluate(t => window.seek(t), i / FPS));
+} else if (mode === "stills") {
   const dir = path.join(here, "out/stills"); mkdirSync(dir, { recursive: true });
   for (const s of rest) writeFileSync(path.join(dir, `t_${s}.png`), await grab(+s));
 } else {
@@ -66,7 +69,7 @@ if (mode === "stills") {
 }
 // reading time: every phrase must be fully readable (a > 0.6) for at least 0.6 s + 0.3 s per word
 if (mode !== "stills") for (const [id, v] of Object.entries(SEEN)) { const need = .6 + .3 * v.words, got = v.frames / FPS; if (got + 1e-6 < need) fails.push({ kind: "too-short-to-read", id, seconds: +got.toFixed(2), need: +need.toFixed(2) }); }
-writeFileSync(path.join(here, "out/text-qa.json"), JSON.stringify({ fails: fails.length, first: fails.slice(0, 20) }, null, 1));
+writeFileSync(path.join(here, "out/text-qa.json"), JSON.stringify({ fails: fails.length, first: fails.slice(0, 20), all: fails }, null, 1));
 console.log(fails.length ? `TEXT QA FAIL: ${fails.length} problems (see out/text-qa.json)` : "TEXT QA PASS: no overlaps, all text inside safe zone");
 await browser.close();
 process.exit(fails.length ? 1 : 0);

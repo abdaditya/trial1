@@ -39,7 +39,7 @@ for c in cues:
     elif s == "push":
         place(fx, whoosh(1.4, 180, 5200), t0, db(-10)); place(fx, sub_drop(1.6, 70, 32), t0 + 1.2, db(-12))
     elif s == "boom":
-        place(fx, lowexp[0], t0 - peak_at_start(lowexp[0]), db(-12)); place(fx, sub_drop(2.0, 64, 30), t0, db(-10))
+        place(fx, lowexp[0], t0 - peak_at_start(lowexp[0]), db(-8)); place(fx, sub_drop(2.0, 64, 30), t0, db(-7)); place(fx, soft, t0 - peak_at_start(soft), db(-12))
     elif s == "scan":
         for q in range(int((T["riser"] - t0) / .5)): place(fx, filt(tick[q % 3], 1500, None), t0 + q * .5, db(-26), pan=(-.3 if q % 2 else .3))
     elif s == "step":
@@ -104,7 +104,8 @@ fx = reverb(fx, 1.8, .18, 6000); mus = reverb(mus, 3.0, .3, 4800)
 def dip(t0, pre=.22, floor=-60, fade=.04):
     gg = np.ones(N); a, b = at(t0 - pre), at(t0); f = int(fade * SR); gg[a:b] = db(floor); gg[a - f:a] = np.linspace(1, db(floor), f); return gg
 gd = dip(T["braam"]) * dip(T["slam"] if False else [c["t"] for c in cues if c["s"] == "slam"][-1], .12, -14)
-mus *= gd[:, None]; amb *= gd[:, None]; fx *= dip(T["braam"])[:, None]
+gb = dip(T["boom"], .16, -40)   # dead stop before "this."
+mus *= (gd * gb)[:, None]; amb *= (gd * gb)[:, None]; fx *= (dip(T["braam"]) * gb)[:, None]
 mix = fx + mus + amb
 mix *= np.interp(np.arange(N) / SR, [0, .05, DUR - 1.0, DUR], [0, 1, 1, 0])[:, None]
 mix = np.tanh(mix / (np.abs(mix).max() + 1e-9) * 1.15) * .89
