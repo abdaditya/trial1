@@ -1,0 +1,388 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SVB bank run — test (scenes 1–3)</title>
+<style>
+  @font-face { font-family: "Playfair"; src: url(fonts/playfair.woff2) format("woff2"); font-weight: 900; }
+  @font-face { font-family: "Manrope"; src: url(fonts/manrope.woff2) format("woff2"); font-weight: 800; }
+  @font-face { font-family: "Oswald"; src: url(fonts/oswald.woff2) format("woff2"); font-weight: 700; }
+  html, body { margin: 0; background: #111; }
+  canvas { display: block; width: 540px; height: 960px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ---------------------------------------------------------------------------
+// zbacktrack · "How a bank dies in 48 hours" · test cut, scenes 1–3 (0–30 s)
+// Deterministic: everything on screen is a pure function of t (seconds).
+// window.seek(t) draws one frame. One world, one camera, no cuts.
+// ---------------------------------------------------------------------------
+const W = 1080, H = 1920, DUR = 30;
+const cv = document.getElementById("c"), g = cv.getContext("2d");
+
+// Brand (Broadsheet + night)
+const C = {
+  paper: "#F2EAD9", card: "#FBF6EC", ink: "#16140F", night: "#17140F",
+  cream: "#F4ECDC", red: "#D2452E", lav: "#B9A6F2", gold: "#E3B341",
+  goldDk: "#A8761C", goldLt: "#F7DA82", steel: "#59626B", steelDk: "#2B2F33",
+  earth: "#E4D5B8", navy: "#1E3A5F", green: "#2F7D5B",
+};
+
+// ---------- math ----------
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;   // cubic in-out
+const eo = k => 1 - Math.pow(1 - k, 3);                                       // cubic out
+const eob = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); }; // back out
+function rng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hex(h) { return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function mix(a, b, k) { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], k))).join(",")})`; }
+
+// ---------- camera (world -> screen) ----------
+// keys: t, cx, cy, z. Eased cubic in-out between keys = smooth glides, no cuts.
+const CAM = [
+  { t: 0.0, cx: 540, cy: 960, z: 1.00 },
+  { t: 5.7, cx: 540, cy: 960, z: 1.05 },   // slow push during the hook
+  { t: 8.6, cx: 540, cy: 2700, z: 1.00 },  // dive down with the coins into the vault
+  { t: 10.2, cx: 540, cy: 2700, z: 1.04 },
+  { t: 13.4, cx: 540, cy: 2170, z: 0.58 }, // pull back: the whole bank
+  { t: 17.6, cx: 540, cy: 2150, z: 0.61 },
+  { t: 19.8, cx: 640, cy: 2640, z: 0.80 }, // x-ray push towards the vault
+  { t: 25.4, cx: 2180, cy: 2560, z: 0.56 },// truck right along the pipes
+  { t: 27.3, cx: 540, cy: 2700, z: 1.05 }, // whip back to the empty vault
+  { t: 30.0, cx: 540, cy: 2700, z: 1.10 },
+];
+function cam(t) {
+  let i = 0; while (i < CAM.length - 2 && t > CAM[i + 1].t) i++;
+  const a = CAM[i], b = CAM[i + 1], k = eio(prog(t, a.t, b.t));
+  // zoom interpolated in log space so push/pull feels even
+  return { cx: lerp(a.cx, b.cx, k), cy: lerp(a.cy, b.cy, k), z: Math.exp(lerp(Math.log(a.z), Math.log(b.z), k)) };
+}
+let CAMNOW;
+function toWorld() { const c = CAMNOW; g.setTransform(c.z, 0, 0, c.z, W / 2 - c.cx * c.z, H / 2 - c.cy * c.z); }
+function toScreen() { g.setTransform(1, 0, 0, 1, 0, 0); }
+
+// ---------- text ----------
+const F = { play: s => `900 ${s}px Playfair`, man: s => `800 ${s}px Manrope`, osw: s => `700 ${s}px Oswald` };
+function fitSize(str, font, size, maxW) { g.font = font(size); const w = g.measureText(str).width; return w > maxW ? size * maxW / w : size; }
+// Draw a line made of parts; one part may carry a lavender highlighter sweep (Wiz style).
+// parts: [{s, hl}] ; opts: {x (center), y (baseline), font, size, color, hlP, hlColor, alpha}
+function hlLine(parts, o) {
+  g.font = o.font(o.size);
+  const ws = parts.map(p => g.measureText(p.s).width), total = ws.reduce((a, b) => a + b, 0);
+  let x = o.x - total / 2;
+  g.textAlign = "left"; g.textBaseline = "alphabetic";
+  parts.forEach((p, i) => {
+    if (p.hl && o.hlP > 0) {
+      g.fillStyle = C.lav;
+      const h = o.size * .78, pad = o.size * .08;
+      g.fillRect(x - pad, o.y - o.size * .66, (ws[i] + pad * 2) * eio(o.hlP), h);
+      g.fillStyle = mix(o.colorHex, C.ink, eio(prog(o.hlP, .35, 1)));
+    } else g.fillStyle = o.colorHex;
+    g.fillText(p.s, x, o.y);
+    x += ws[i];
+  });
+}
+
+// ---------- static grain ----------
+const grain = document.createElement("canvas"); grain.width = W; grain.height = H;
+{ const gc = grain.getContext("2d"), id = gc.createImageData(W, H), r = rng(7);
+  for (let i = 0; i < id.data.length; i += 4) { const v = r() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 255; }
+  gc.putImageData(id, 0, 0); }
+
+// ---------- world layout ----------
+const GROUND = 2380;
+const VAULT = { x0: 170, x1: 910, y0: 2440, y1: 2975 };
+const PIPES = [   // vault -> where your money really goes
+  { name: "home", pts: [[905, 2600], [1450, 2600], [1450, 2392]], w: 40 },
+  { name: "biz", pts: [[905, 2750], [2040, 2750], [2040, 2392]], w: 40 },
+  { name: "bonds", pts: [[905, 2900], [2760, 2900], [2760, 2392]], w: 58 },
+];
+PIPES.forEach(p => { p.seg = []; p.len = 0; for (let i = 1; i < p.pts.length; i++) { const [a, b] = [p.pts[i - 1], p.pts[i]]; const l = Math.hypot(b[0] - a[0], b[1] - a[1]); p.seg.push({ a, b, l, s: p.len }); p.len += l; } });
+function along(p, d) { d = clamp(d, 0, p.len); for (const s of p.seg) if (d <= s.s + s.l) { const k = (d - s.s) / s.l; return [lerp(s.a[0], s.b[0], k), lerp(s.a[1], s.b[1], k)]; } const e = p.pts[p.pts.length - 1]; return [e[0], e[1]]; }
+
+// Pile slots inside the vault: tapered heap, bottom row first.
+const COIN_R = 13, slots = [];
+{ const r = rng(11); let row = 0;
+  while (slots.length < 420) {
+    const n = Math.max(5, 27 - row), y = VAULT.y1 - 24 - row * 21;
+    for (let i = 0; i < n; i++) slots.push([540 + (i - (n - 1) / 2) * 25.5 + (r() - .5) * 6 + (row % 2) * 6, y + (r() - .5) * 5]);
+    row++;
+  } }
+
+// ---------- coins ----------
+// Hook coins: sampled from the "$42 BILLION" glyphs, so the number itself shatters into money.
+const HOOK = { numY: 720, numSize: 420, bilY: 950, bilSize: 172, lineY: 1150, lineSize: 92 };
+const coins = [];
+function buildCoins() {
+  const off = document.createElement("canvas"); off.width = W; off.height = H;
+  const o = off.getContext("2d"); o.fillStyle = "#000"; o.textAlign = "center";
+  o.font = F.play(HOOK.numSize); o.fillText("$42", 540, HOOK.numY);
+  o.font = F.osw(HOOK.bilSize); o.fillText("BILLION", 540, HOOK.bilY);
+  const d = o.getImageData(0, 0, W, H).data, r = rng(3), pts = [];
+  const step = 23;
+  for (let y = 300; y < 1000; y += step) for (let x = 60; x < 1020; x += step) {
+    const jx = x + (r() - .5) * 8, jy = y + (r() - .5) * 8;
+    if (d[(Math.round(jy) * W + Math.round(jx)) * 4 + 3] > 128) pts.push([jx, jy]);
+  }
+  const ymin = Math.min(...pts.map(p => p[1])), ymax = Math.max(...pts.map(p => p[1]));
+  pts.forEach(([x, y]) => coins.push({ kind: "hook", x0: x, y0: y, t0: 1.95 + (1 - (y - ymin) / (ymax - ymin)) * .75 + r() * .35, spin: 6 + r() * 9, ph: r() * 6.28 }));
+  // rain: the last few coins drop in as the camera arrives in the vault
+  for (let i = 0; i < 46; i++) coins.push({ kind: "rain", x0: 330 + r() * 420, y0: 1560 - r() * 200, t0: 6.6 + i / 46 * 1.9 + r() * .1, spin: 6 + r() * 9, ph: r() * 6.28 });
+  // deposits: people at the door flick coins into the bank (scene 2)
+  PEOPLE.forEach((p, i) => coins.push({ kind: "dep", who: p, t0: p.tArrive, spin: 9, ph: r() * 6.28 }));
+  // assign pile slots in landing order (earliest lands lowest)
+  const order = coins.map((c, i) => [c.t0 + (c.kind === "hook" ? Math.sqrt(2 * (2600 - c.y0) / 2600) : 0), i]).sort((a, b) => a[0] - b[0]);
+  order.forEach(([, i], k) => { coins[i].slot = k; });
+  coins.forEach(c => { [c.xs, c.ys] = slots[c.slot]; if (c.kind !== "dep") { c.land = c.t0 + Math.sqrt(2 * (c.ys - c.y0) / 2600); } else c.land = c.t0 + .9; });
+  // scene 3: 90% of the pile leaves through the pipes, top of the heap first
+  const n = coins.length, keep = Math.round(n * .1), byTop = coins.slice().sort((a, b) => b.slot - a.slot);
+  byTop.slice(0, n - keep).forEach((c, k) => {
+    const u = k / (n - keep), rr = r();
+    c.pipe = rr < .45 ? PIPES[2] : rr < .75 ? PIPES[0] : PIPES[1];
+    c.tOut = 20.3 + u * 5.0 + r() * .12;
+    c.vOut = 1150 + r() * 150;
+  });
+  STATS.total = n; STATS.kept = keep;
+}
+const STATS = {};
+
+// ---------- people (scene 2) ----------
+const PEOPLE = [];
+{ const r = rng(21), cols = [C.ink, C.navy, C.red, C.ink, C.green, C.navy];
+  for (let i = 0; i < 18; i++) {
+    const left = i % 2 === 0, start = 10.2 + i * .38 + r() * .2, x0 = left ? -620 - r() * 200 : 1700 + r() * 200;
+    const speed = 340 + r() * 80, xd = 540 + (r() - .5) * 60, dist = Math.abs(xd - x0);
+    PEOPLE.push({ x0, xd, start, tArrive: start + dist / speed, col: cols[i % cols.length], h: .9 + r() * .25, ph: r() * 6 });
+  } }
+
+// ---------- drawing: coins ----------
+function coin(x, y, r, spinA, alpha = 1) {
+  const sx = Math.max(.18, Math.abs(Math.cos(spinA)));
+  g.save(); g.globalAlpha *= alpha; g.translate(x, y); g.scale(sx, 1);
+  g.beginPath(); g.arc(0, 0, r, 0, 6.2832); g.fillStyle = C.goldDk; g.fill();
+  g.beginPath(); g.arc(-r * .06, -r * .06, r * .84, 0, 6.2832); g.fillStyle = C.gold; g.fill();
+  g.beginPath(); g.arc(-r * .3, -r * .3, r * .3, 0, 6.2832); g.fillStyle = C.goldLt; g.fill();
+  g.restore();
+}
+function coinPos(c, t) {
+  // returns [x, y, spinAngle, alpha] or null
+  if (c.pipe && t >= c.tOut) {             // leaving through a pipe
+    const tau = t - c.tOut, lift = Math.min(tau / .35, 1);
+    const entry = c.pipe.pts[0];
+    if (tau < .35) { const k = eio(lift); return [lerp(c.xs, entry[0] - 20, k), lerp(c.ys, entry[1], k) - Math.sin(k * 3.14) * 40, c.ph + tau * 14, 1]; }
+    const d = (tau - .35) * c.vOut; if (d > c.pipe.len + 30) return null;
+    const [x, y] = along(c.pipe, d); return [x, y, c.ph + tau * 14, d > c.pipe.len - 30 ? clamp((c.pipe.len + 30 - d) / 60) : 1];
+  }
+  if (c.kind === "dep") {
+    const p = c.who; if (t < c.t0) return null;
+    const tau = t - c.t0;
+    if (tau < .9) { const k = tau / .9; // arc from hand into the door, then drop to the pile
+      if (k < .5) { const q = k / .5; return [lerp(p.xd, 540, q), lerp(GROUND - 70, GROUND - 120, q) - Math.sin(q * 3.14) * 90, c.ph + tau * 18, 1 - prog(q, .7, 1)]; }
+      const q = (k - .5) / .5; return [lerp(540, c.xs, q), lerp(VAULT.y0 + 20, c.ys, q * q), c.ph + tau * 18, prog(q, 0, .2)];
+    }
+    return [c.xs, c.ys, 0, 1];
+  }
+  if (t < c.t0) return c.kind === "hook" ? [c.x0, c.y0, 0, 1] : null;
+  if (t < c.land) { const tau = t - c.t0, y = c.y0 + 1300 * tau * tau, k = clamp((y - c.y0) / (c.ys - c.y0));
+    return [lerp(c.x0, c.xs, eio(k)), y, c.ph + tau * c.spin, 1]; }
+  const st = t - c.land, bounce = Math.exp(-st * 9) * Math.abs(Math.sin(st * 22)) * 12;   // little settle bounce
+  return [c.xs, c.ys - bounce, (c.ph + (c.land - c.t0) * c.spin) * Math.exp(-st * 6), 1];
+}
+
+// ---------- drawing: world pieces ----------
+function rr(x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function bank(t, a) {
+  if (a <= 0) return;
+  g.save(); g.globalAlpha = a; g.lineWidth = 6; g.strokeStyle = C.ink; g.lineJoin = "round";
+  const xr = prog(t, 18.0, 19.4), fillA = 1 - .82 * eio(xr);           // x-ray: walls go to blueprint
+  const L = -170, R = 1250;
+  // steps
+  for (let i = 0; i < 3; i++) { g.globalAlpha = a * fillA; g.fillStyle = mix(C.card, C.earth, i / 3); g.fillRect(L - 30 + i * 30, GROUND - 26 * (i + 1), R - L + 60 - i * 60, 26); g.globalAlpha = a; g.strokeRect(L - 30 + i * 30, GROUND - 26 * (i + 1), R - L + 60 - i * 60, 26); }
+  const top = 1640, base = GROUND - 78;
+  // body + columns
+  g.globalAlpha = a * fillA; g.fillStyle = C.card; g.fillRect(L, top, R - L, base - top);
+  g.globalAlpha = a; g.strokeRect(L, top, R - L, base - top);
+  for (let i = 0; i < 7; i++) {
+    const cx = L + 90 + i * ((R - L - 180) / 6); if (Math.abs(cx - 540) < 60) continue;
+    g.globalAlpha = a * fillA; g.fillStyle = C.paper; g.fillRect(cx - 38, top + 40, 76, base - top - 40);
+    g.globalAlpha = a; g.strokeRect(cx - 38, top + 40, 76, base - top - 40);
+    g.beginPath(); for (let k = -1; k <= 1; k++) { g.moveTo(cx + k * 16, top + 70); g.lineTo(cx + k * 16, base - 20); } g.lineWidth = 3; g.stroke(); g.lineWidth = 6;
+  }
+  // entablature + pediment
+  g.globalAlpha = a * fillA; g.fillStyle = C.paper; g.fillRect(L - 40, top - 70, R - L + 80, 70);
+  g.globalAlpha = a; g.strokeRect(L - 40, top - 70, R - L + 80, 70);
+  g.beginPath(); g.moveTo(L - 60, top - 70); g.lineTo(540, top - 330); g.lineTo(R + 60, top - 70); g.closePath();
+  g.globalAlpha = a * fillA; g.fillStyle = C.card; g.fill(); g.globalAlpha = a; g.stroke();
+  g.fillStyle = C.ink; g.font = F.osw(118); g.textAlign = "center"; g.fillText("B A N K", 540, top - 120);
+  // door
+  g.globalAlpha = a * fillA; g.fillStyle = C.ink; rr(470, base - 230, 140, 230, [70, 70, 0, 0]); g.fill();
+  g.globalAlpha = a; rr(470, base - 230, 140, 230, [70, 70, 0, 0]); g.stroke();
+  g.restore();
+}
+function ground(t, a) {
+  if (a <= 0) return;
+  const xr = eio(prog(t, 18.0, 19.4));
+  g.save(); g.globalAlpha = a * (1 - .45 * xr); g.fillStyle = C.earth; g.fillRect(-3000, GROUND, 9000, 1400);
+  // hatching for the soil
+  g.globalAlpha = a * .18 * (1 - .5 * xr); g.strokeStyle = C.ink; g.lineWidth = 3; g.beginPath();
+  for (let x = -3000; x < 6000; x += 46) { g.moveTo(x, GROUND + 20); g.lineTo(x - 40, GROUND + 60); }
+  g.stroke();
+  g.globalAlpha = a; g.fillStyle = C.ink; g.fillRect(-3000, GROUND - 4, 9000, 8);
+  g.restore();
+}
+function vault(t, a) {
+  if (a <= 0) return;
+  const { x0, x1, y0, y1 } = VAULT;
+  g.save(); g.globalAlpha = a;
+  rr(x0 - 24, y0 - 24, x1 - x0 + 48, y1 - y0 + 48, 18); g.fillStyle = C.steel; g.fill(); g.lineWidth = 6; g.strokeStyle = C.ink; g.stroke();
+  g.fillStyle = C.steelDk; g.fillRect(x0, y0, x1 - x0, y1 - y0);
+  // vault-door emblem on the back wall
+  g.globalAlpha = a * .5; g.strokeStyle = "#4A535C"; g.lineWidth = 10; g.beginPath(); g.arc(540, (y0 + y1) / 2 - 10, 190, 0, 6.2832); g.stroke();
+  g.lineWidth = 7; g.beginPath(); for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3 + t * .15; g.moveTo(540, (y0 + y1) / 2 - 10); g.lineTo(540 + Math.cos(an) * 150, (y0 + y1) / 2 - 10 + Math.sin(an) * 150); } g.stroke();
+  // rivets
+  g.globalAlpha = a; g.fillStyle = "#8C959E";
+  for (let x = x0 - 6; x <= x1 + 6; x += 62) { g.beginPath(); g.arc(x, y0 - 12, 5, 0, 6.2832); g.arc(x, y1 + 12, 5, 0, 6.2832); g.fill(); }
+  g.restore();
+}
+function pipes(t) {
+  const rev = prog(t, 19.3, 20.6); if (rev <= 0) return;
+  g.save(); g.lineCap = "round"; g.lineJoin = "round";
+  PIPES.forEach((p, i) => {
+    const k = eio(clamp(rev * 1.25 - i * .12)); if (k <= 0) return;
+    const len = p.len * k;
+    const path = () => { g.beginPath(); g.moveTo(...p.pts[0]); for (const s of p.seg) { if (s.s >= len) break; const e = s.s + s.l <= len ? s.b : along(p, len); g.lineTo(...e); } };
+    path(); g.strokeStyle = C.ink; g.lineWidth = p.w + 14; g.stroke();
+    path(); g.strokeStyle = "#CDBF9F"; g.lineWidth = p.w; g.stroke();
+  });
+  g.restore();
+}
+function destinations(t) {
+  const a = eo(prog(t, 19.9, 20.9)); if (a <= 0) return;
+  const hit = name => { let s = 0; for (const c of coins) if (c.pipe && c.pipe.name === name) { const arr = c.tOut + .35 + c.pipe.len / c.vOut; const d = t - arr; if (d > 0 && d < .3) s += 1 - d / .3; } return Math.min(s, 3) * .025; };
+  g.save(); g.lineWidth = 6; g.strokeStyle = C.ink; g.lineJoin = "round";
+  // house
+  { const s = (eob(a)) * (1 + hit("home")); g.save(); g.translate(1450, GROUND); g.scale(s, s);
+    g.fillStyle = C.card; g.fillRect(-120, -190, 240, 190); g.strokeRect(-120, -190, 240, 190);
+    g.beginPath(); g.moveTo(-150, -185); g.lineTo(0, -330); g.lineTo(150, -185); g.closePath(); g.fillStyle = C.red; g.fill(); g.stroke();
+    g.fillStyle = C.ink; g.fillRect(-28, -110, 56, 110); g.fillStyle = C.lav; g.fillRect(50, -150, 50, 50); g.strokeRect(50, -150, 50, 50); g.fillRect(-100, -150, 50, 50); g.strokeRect(-100, -150, 50, 50);
+    g.restore(); }
+  // offices (business loans)
+  { const s = (eob(prog(t, 20.1, 21.1))) * (1 + hit("biz")); g.save(); g.translate(2040, GROUND); g.scale(s, s);
+    g.fillStyle = C.navy; g.fillRect(-110, -470, 220, 470); g.strokeRect(-110, -470, 220, 470);
+    g.fillStyle = C.goldLt; for (let r = 0; r < 8; r++) for (let q = 0; q < 3; q++) if ((r * 3 + q) % 4 !== 1) g.fillRect(-82 + q * 60, -440 + r * 52, 44, 30);
+    g.restore(); }
+  // bonds — the box SVB filled the most (sets up scene 4)
+  { const s = (eob(prog(t, 20.3, 21.3))) * (1 + hit("bonds")); g.save(); g.translate(2760, GROUND); g.scale(s, s);
+    for (let i = 5; i >= 0; i--) { g.fillStyle = i % 2 ? C.card : "#EDE2C9"; g.fillRect(-170 + i * 8, -420 + i * 14, 340, 420 - i * 14); g.strokeRect(-170 + i * 8, -420 + i * 14, 340, 420 - i * 14); }
+    g.fillStyle = C.ink; g.font = F.osw(92); g.textAlign = "center"; g.fillText("BONDS", 20, -250);
+    g.lineWidth = 4; g.strokeRect(-110, -200, 260, 120); g.font = F.man(34); g.fillText("U.S. TREASURY", 20, -128);
+    g.restore(); }
+  // tiny labels — only where the picture alone is not enough
+  g.globalAlpha = a; g.fillStyle = C.ink; g.font = F.man(46); g.textAlign = "center";
+  g.fillText("HOME LOANS", 1450, GROUND - 370); g.fillText("BUSINESS LOANS", 2040, GROUND - 510);
+  g.restore();
+}
+function person(p, t) {
+  if (t < p.start || t > p.tArrive + .5) return;
+  const tau = t - p.start, k = clamp(tau / (p.tArrive - p.start));
+  const x = lerp(p.x0, p.xd, k), walking = k < 1, bob = walking ? Math.abs(Math.sin(tau * 9 + p.ph)) * 8 : 0;
+  const fade = 1 - prog(t, p.tArrive + .15, p.tArrive + .5);
+  g.save(); g.globalAlpha *= fade; g.translate(x, GROUND - bob); g.scale(p.h * 1.5, p.h * 1.5);
+  g.fillStyle = p.col; rr(-17, -78, 34, 54, 14); g.fill();
+  g.beginPath(); g.arc(0, -96, 16, 0, 6.2832); g.fill();
+  // legs swing
+  g.strokeStyle = p.col; g.lineWidth = 9; g.lineCap = "round"; const sw = walking ? Math.sin(tau * 9 + p.ph) * 10 : 0;
+  g.beginPath(); g.moveTo(-6, -26); g.lineTo(-6 + sw, 0); g.moveTo(6, -26); g.lineTo(6 - sw, 0); g.stroke();
+  g.restore();
+}
+function vaultCounter(t) {
+  const a = eo(prog(t, 18.7, 19.5)); if (a <= 0) return;
+  let gone = 0; for (const c of coins) if (c.pipe && t > c.tOut) gone++;
+  const pct = Math.round(100 * (1 - gone / STATS.total));
+  g.save(); g.globalAlpha = a; g.textAlign = "center";
+  g.fillStyle = C.ink; g.font = F.man(38); g.fillText("CASH LEFT IN THE VAULT", 540, 330);
+  g.font = F.play(170); g.fillStyle = pct <= 15 ? C.red : C.ink; g.fillText("$" + pct, 540, 500 - (1 - eob(a)) * 40);
+  g.font = F.man(30); g.fillStyle = C.ink; g.globalAlpha = a * .7; g.fillText("OUT OF EVERY $100 DEPOSITED", 540, 555);
+  g.restore();
+}
+
+// ---------- screen-space captions ----------
+function caption(lines, t, tIn, tOut, y, size, hl) {
+  const a = eo(prog(t, tIn, tIn + .5)) * (1 - prog(t, tOut - .4, tOut)); if (a <= 0) return;
+  g.save(); g.globalAlpha = a;
+  lines.forEach((parts, i) => {
+    const sz = fitSize(parts.map(p => p.s).join(""), F.play, size, 840);
+    hlLine(parts, { x: 540, y: y + i * size * 1.12 + (1 - eo(prog(t, tIn, tIn + .6))) * 40, font: F.play, size: sz, colorHex: C.ink, hlP: hl ? prog(t, hl[0], hl[1]) : 0 });
+  });
+  g.restore();
+}
+
+// ---------- frame ----------
+function seek(t) {
+  CAMNOW = cam(t);
+  const day = eio(prog(t, 5.9, 7.6));            // night hook -> daylight broadsheet
+  toScreen(); g.fillStyle = mix(C.night, C.paper, day); g.fillRect(0, 0, W, H);
+
+  toWorld();
+  const worldA = day;
+  ground(t, worldA);
+  bank(t, eio(prog(t, 6.2, 7.8)));
+  vault(t, eio(prog(t, 6.6, 8.0)));
+  pipes(t); destinations(t);
+  PEOPLE.forEach(p => person(p, t));
+
+  // ----- hook text lives in the world, so the camera dive carries it away -----
+  const textCol = day > .5 ? C.ink : C.cream;
+  if (t < 2.1) { // "$42 BILLION" — cream, then turns to gold just before it shatters
+    const gk = prog(t, 1.25, 1.85), fade = 1 - prog(t, 1.95, 2.1);
+    g.save(); g.globalAlpha = fade; g.textAlign = "center";
+    g.fillStyle = mix(C.cream, C.gold, gk); g.font = F.play(HOOK.numSize); g.fillText("$42", 540, HOOK.numY);
+    g.font = F.osw(HOOK.bilSize); g.fillText("BILLION", 540, HOOK.bilY);
+    g.restore();
+  }
+  { const a = 1 - prog(t, 3.0, 3.4);
+    if (a > 0) { g.save(); g.globalAlpha = a; const sz = fitSize("Gone in one day.", F.play, HOOK.lineSize, 840);
+      hlLine([{ s: "Gone in " }, { s: "one day.", hl: true }], { x: 540, y: HOOK.lineY - prog(t, 3.0, 3.4) * 30, font: F.play, size: sz, colorHex: C.cream, hlP: prog(t, .2, .8) });
+      g.restore(); } }
+  { const a = eo(prog(t, 3.55, 4.1)) * (1 - prog(t, 5.9, 6.5)); // the contradiction beat
+    if (a > 0) { g.save(); g.globalAlpha = a;
+      const sz = fitSize("a single dollar.", F.play, 116, 820), rise = (1 - eo(prog(t, 3.55, 4.2))) * 50;
+      hlLine([{ s: "Nobody stole" }], { x: 540, y: 880 + rise, font: F.play, size: sz, colorHex: C.cream, hlP: 0 });
+      hlLine([{ s: "a " }, { s: "single dollar.", hl: true }], { x: 540, y: 880 + sz * 1.15 + rise, font: F.play, size: sz, colorHex: C.cream, hlP: prog(t, 4.35, 4.95) });
+      g.restore(); } }
+
+  // ----- coins (always on top of the world) -----
+  for (const c of coins) {
+    if (c.kind === "hook" && t < 1.95) continue;   // still part of the glyphs
+    const p = coinPos(c, t); if (!p) continue;
+    coin(p[0], p[1], COIN_R, p[2], p[3]);
+  }
+
+  // ----- screen-space captions -----
+  toScreen();
+  caption([[{ s: "Every bank" }], [{ s: "works like this." }]], t, 12.3, 17.4, 330, 92);
+  caption([[{ s: "Your money" }], [{ s: "isn't sitting there.", hl: true }]], t, 27.5, 30.6, 1400, 96, [28.2, 28.8]);
+
+  vaultCounter(t);
+
+  // grain + soft vignette
+  g.globalAlpha = .055; g.globalCompositeOperation = "overlay"; g.drawImage(grain, 0, 0);
+  g.globalCompositeOperation = "source-over"; g.globalAlpha = 1;
+  const vg = g.createRadialGradient(540, 960, 600, 540, 960, 1250); vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.16)");
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+}
+
+window.DUR = DUR;
+window.ready = (async () => {
+  await Promise.all([document.fonts.load(F.play(100)), document.fonts.load(F.man(40)), document.fonts.load(F.osw(100))]);
+  buildCoins();
+  window.seek = seek; seek(0);
+  return { coins: coins.length, kept: STATS.kept };
+})();
+</script>
+</body>
+</html>
