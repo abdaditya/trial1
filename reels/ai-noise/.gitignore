@@ -2,3 +2,4 @@ out/
 audio/mix.wav
 audio/raw/
 *.mp4
+__pycache__/
