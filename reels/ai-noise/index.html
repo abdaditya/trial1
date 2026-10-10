@@ -185,7 +185,7 @@ function typeLine(text, t, o) {
     g.fillStyle = dark ? "rgba(6,10,20,1)" : "rgba(238,245,250,1)"; g.filter = `blur(${Math.max(10, o.size * .12)}px)`;
     const reveal = o.mode === "write" ? eio(prog(t, o.t0, o.t0 + (o.dur || .9))) : 1;
     g.beginPath(); g.rect(x0 - 60, boxY - o.size, (tw + 120) * reveal, o.size * 3); g.clip();
-    for (let k = 0; k < 2; k++) { g.globalAlpha = ga * (dark ? .62 : .55); g.fillText(text, x0, o.y); } g.restore(); }
+    for (let k = 0; k < 2; k++) { g.globalAlpha = ga * (dark ? .62 : .72); g.fillText(text, x0, o.y); } g.restore(); }
   const contrast = contrastUnder(x0, boxY, tw, boxH, o.color);   // measured after the glow: what the viewer sees
   const blur = ei(out) * 18, lift = ei(out) * -60, sc = 1 + ei(out) * .18;
   g.translate(540, o.y); g.scale(sc, sc); g.translate(-540, -o.y + lift); if (blur > .3) g.filter = `blur(${blur}px)`;
@@ -403,12 +403,12 @@ function text(t) {
   // 2 · PROMPT now lives in the app card (opening)
   // 3 · it starts with noise
   typeLine("It doesn't start with", t, { id: "p1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.push, t1: T.startsThis - .1, ls: -2 });
-  typeLine("a blank page.", t, { id: "p2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.push + .45, t1: T.startsThis - .1, ls: -2 });
+  typeLine("a blank page.", t, { id: "p2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.push + .3, t1: T.startsThis - .1, ls: -2 });
   typeLine("It starts with", t, { id: "p3", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.startsThis, t1: T.question - .1, ls: -2 });
   typeLine("this.", t, { id: "p4", font: F.script(230), size: 230, y: 1080, color: LAV, t0: T.startsThis + .45, t1: T.question - .1, mode: "write", dur: .6 });
   typeLine("Then it asks", t, { id: "q1", font: F.inter(70), size: 70, y: 860, color: CREAM, t0: T.question, t1: T.belong - .05, ls: -2 });
-  typeLine("one question…", t, { id: "q2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.question + .5, t1: T.belong - .05, ls: -2 });
-  typeLine("what doesn't belong?", t, { id: "q3", font: F.script(150), size: 150, y: 1000, color: CREAM, t0: T.belong, t1: T.steps + .1, mode: "write", dur: 1.0 });
+  typeLine("one question…", t, { id: "q2", font: F.inter(70), size: 70, y: 950, color: CREAM, t0: T.question + .3, t1: T.belong - .05, ls: -2 });
+  typeLine("what doesn't belong?", t, { id: "q3", font: F.script(150), size: 150, y: 1000, color: CREAM, t0: T.belong, t1: T.steps + .1, mode: "write", dur: .6 });
   // 4 · the steps
   if (t > T.steps - .1 && t < T.snap + 1.4) pill("step", t < T.snap ? `Step ${stepAt(t)} of 50` : "Step 50 of 50  ✓", t, T.steps, T.snap + 1.4, 300, { dot: t < T.snap ? LAV : GOLD });
   const sc = t < 24 ? CREAM : INK;
@@ -418,7 +418,7 @@ function text(t) {
   // 5 · the twist
   meta(t, win(t, T.snap + .8, T.wall + .2, .5, .4), "rgba(15,30,44,.75)");
   typeLine("But how does it know", t, { id: "w1", font: F.inter(66), size: 66, y: 560, color: INK, t0: T.twist, t1: T.wall + .2, ls: -2 });
-  typeLine("what a cliff looks like?", t, { id: "w2", font: F.script(140), size: 140, y: 720, color: INK, t0: T.twist + .9, t1: T.wall + .2, mode: "write" });
+  typeLine("what a cliff looks like?", t, { id: "w2", font: F.script(140), size: 140, y: 720, color: INK, t0: T.twist + .55, t1: T.wall + .2, mode: "write", dur: .6 });
   // 6 · the wall of photos
   typeLine("It studied", t, { id: "m1", font: F.inter(70), size: 70, y: 620, color: CREAM, t0: T.wall + 1.8, t1: 41.3, ls: -2 });
   typeLine("millions", t, { id: "m2", group: "mil", font: F.anton(240), size: 240, y: 880, color: CREAM, t0: T.wall + 2.2, t1: 41.3, mode: "slam" });
@@ -426,7 +426,7 @@ function text(t) {
   typeLine("Each one covered in noise.", t, { id: "m4", font: F.inter(64), size: 64, y: 900, color: CREAM, t0: 41.5, t1: T.waveBack + .1, ls: -2 });
   typeLine("Until it learned", t, { id: "m6", font: F.inter(62), size: 62, y: 820, color: CREAM, t0: T.waveBack + .2, t1: T.flyIn + .3, ls: -2 });
   typeLine("what's noise", t, { id: "m7", font: F.script(140), size: 140, y: 960, color: LAV, t0: T.waveBack + .55, t1: T.flyIn + .3, mode: "write", dur: .6 });
-  typeLine("and what's not.", t, { id: "m8", font: F.inter(62), size: 62, y: 1115, color: CREAM, t0: T.waveBack + 1.05, t1: T.flyIn + .3, ls: -2 });
+  typeLine("and what's not.", t, { id: "m8", font: F.inter(62), size: 62, y: 1115, color: CREAM, t0: T.waveBack + .85, t1: T.flyIn + .3, ls: -2 });
   if (t > T.wall + 1.6 && t < T.flyIn + .2) { const n = Math.floor(lerp(1200, 4800000, ei(prog(t, T.wall + 1.6, T.flyIn)))); pill("count", `${n.toLocaleString("en-US")} photos studied`, t, T.wall + 1.6, T.flyIn + .2, 1290, { dot: GOLD }); }
   // 7 · the payoff poster
   meta(t, win(t, T.poster, T.end + .2, .5, .4), "rgba(15,30,44,.75)");
