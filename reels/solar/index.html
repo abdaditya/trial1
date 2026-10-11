@@ -612,11 +612,11 @@ function sCity(t) {
   photo(IM.city, lerp(.42, .58, k), .5, lerp(1.08, 1.2, k), `saturate(${lerp(1.35, .7, off)}) contrast(1.1) brightness(${lerp(1.0, .45, off)})`);
   vignette(.5); shade(.82, 860, .7);
   // APR → JUN chips
-  const ca = win(t, ws(187) - .1, ws(193), .25, .3); if (ca > 0) ["APR", "MAY", "JUN"].forEach((m, i) => { const k2 = eob(prog(t, ws(187) + i * .2, ws(187) + i * .2 + .35)); if (k2 <= 0) return; const x = 540 + (i - 1) * 230;
+  const ca = win(t, ws(187) - .1, ws(193) - .2, .25, .25); if (ca > 0) ["APR", "MAY", "JUN"].forEach((m, i) => { const k2 = eob(prog(t, ws(187) + i * .2, ws(187) + i * .2 + .35)); if (k2 <= 0) return; const x = 540 + (i - 1) * 230;
     g.save(); g.globalAlpha = ca; g.translate(x, 760); g.scale(k2, k2); g.fillStyle = "#F6F1E6"; rrect(-95, -80, 190, 160, 14); g.fill(); g.fillStyle = "#C2410C"; rrect(-95, -80, 190, 46, [14, 14, 0, 0]); g.fill();
     g.font = "800 66px Playfair"; g.textAlign = "center"; g.fillStyle = "#16121c"; g.fillText(m, 0, 52); g.restore(); reg("chip" + i, x - 95, 680, 190, 160, ca * (k2 > .9), 66, 14); });
   // 8,133 GWh
-  const na = win(t, ws(193) - .1, 71.2, .3, .3); if (na > 0) { const n = Math.round(8133 * eo(prog(t, ws(193), ws(195) + .2))); g.save(); g.globalAlpha = na; g.textAlign = "center"; g.font = "800 200px Playfair"; g.fillStyle = "#F5EFE3"; g.shadowColor = "rgba(0,0,0,.7)"; g.shadowBlur = 30;
+  const na = win(t, ws(193) + .05, 71.2, .3, .3); if (na > 0) { const n = Math.round(8133 * eo(prog(t, ws(193), ws(195) + .2))); g.save(); g.globalAlpha = na; g.textAlign = "center"; g.font = "800 200px Playfair"; g.fillStyle = "#F5EFE3"; g.shadowColor = "rgba(0,0,0,.7)"; g.shadowBlur = 30;
     const s = n.toLocaleString("en-IN"); g.fillText(s, 540, 860); g.shadowColor = "transparent"; g.font = "600 80px Oswald"; g.fillStyle = "#F2B544"; g.letterSpacing = "4px"; g.fillText("GWh SWITCHED OFF", 540, 970); g.restore();
     reg("8133", 140, 700, 800, 290, na, 80, 12); }
   // 1.4 million homes, one light per 10,000
@@ -643,7 +643,7 @@ function panelIcon(x, y, w, h, col, dash, t) {
 }
 // S13 — 33% of new solar on temporary links: 100 panels on a paper card
 function sDonut(t) {
-  creamBg(); const CW = 820, CH = 960, TOP = 540, k = eo(prog(t, 73.15, 73.9)), push = lerp(1, 1.04, prog(t, 73.4, 78.6));
+  creamBg(); const CW = 820, CH = 960, TOP = 540, k = eo(prog(t, 73.2, 73.95)), push = lerp(1, 1.04, prog(t, 73.4, 78.6));
   g.save(); g.translate(CX, 1020); g.scale(push, push); g.translate(-CX, -1020);
   const close = paper(CX, TOP, CW, CH, lerp(-2.2, -1.2, k), k, k);
   g.textAlign = "left"; g.font = "700 32px Inter"; g.letterSpacing = "5px"; g.fillStyle = "#9A3F14"; g.fillText("NEW SOLAR · HOW IT CONNECTS", -CW / 2 + 60, -CH / 2 + 84);
@@ -661,7 +661,7 @@ function sDonut(t) {
   g.fillStyle = "#F08C32"; g.fillRect(gx, ly, 34, 26); g.font = "700 36px Inter"; g.letterSpacing = "2px"; g.fillStyle = "#2a2420"; g.fillText("TEMPORARY LINKS", gx + 50, ly + 25);
   g.globalAlpha = k; stamp(CW / 2 - 190, -CH / 2 + 205, "TGNA", prog(t, ws(225) - .08, ws(225) + .3), "#C0392B", 70, -9);
   close(); g.restore();
-  regEl("card", CX - CW / 2, TOP, CW, CH, k);
+  regEl("card", CX - CW / 2, TOP, CW, CH, t > 73.14 ? k : 0);
 }
 // S14 — noon: about half held back (same paper world)
 function sNoon(t) {
@@ -711,7 +711,7 @@ const SC = [
   { id: "stop", t0: 52.6, t1: 61.85, f: sStop, tr: "iris" },
   { id: "city", t0: 61.35, t1: 71.4, f: sCity, tr: "leak" },
   { id: "q2", t0: 70.9, t1: 73.6, f: t => sQuestion(t, false), tr: "fade" },
-  { id: "donut", t0: 73.1, t1: 78.65, f: sDonut, tr: "push" },
+  { id: "donut", t0: 73.15, t1: 78.65, f: sDonut, tr: "push" },
   { id: "noon", t0: 78.15, t1: 84.05, f: sNoon, tr: "whipL" },
   { id: "earth2", t0: 83.55, t1: 89.2, f: t => { earthFrame(t); earthOverlay(t); }, tr: "pull" },
   { id: "end", t0: 88.7, t1: 92.01, f: sEnd, tr: "fade" },
@@ -719,17 +719,17 @@ const SC = [
 const CAPS = [
   { id: "c0", i0: 0, i1: 8, t1: 3.0, size: 66, st: { faster: { hl: "lav" } } },
   { id: "c1", i0: 9, i1: 14, t1: 5.35, size: 80, st: { anywhere: { it: 1, hl: "or" } } },
-  { id: "c4", i0: 25, i1: 32, t1: 10.5, st: { move: { hl: "lav" } } },
-  { id: "c6", i0: 38, i1: 45, t1: 14.4, st: { one: { it: 1, hl: "or" }, place: { it: 1, hl: "or" } } },
+  { id: "c4", i0: 25, i1: 32, t1: 10.8, st: { move: { hl: "lav" } } },
+  { id: "c6", i0: 38, i1: 45, t1: 14.5, st: { one: { it: 1, hl: "or" }, place: { it: 1, hl: "or" } } },
   { id: "c7", i0: 52, i1: 54, t1: 19.9, size: 72, st: { sun: { it: 1, hl: "or" } } },
-  { id: "c8", i0: 59, i1: 66, t1: ws(67) - .1, st: { not: { it: 1, hl: "or" } } },
-  { id: "c11", i0: 87, i1: 93, t1: ws(94) - .1, st: { pipeline: { it: 1, hl: "or" } } },
-  { id: "c13", i0: 103, i1: 109, t1: 36.3, size: 70, st: { transmission: { hl: "lav" } } },
+  { id: "c8", i0: 59, i1: 66, t1: 23.3, st: { not: { it: 1, hl: "or" } } },
+  { id: "c11", i0: 87, i1: 93, t1: 31.1, st: { pipeline: { it: 1, hl: "or" } } },
+  { id: "c13", i0: 103, i1: 109, t1: 36.5, size: 70, st: { transmission: { hl: "lav" } } },
   { id: "c14", i0: 110, i1: 117, t1: ws(118) - .1, ink: true, st: { "12": { it: 1, hl: "or" }, months: { it: 1, hl: "or" } } },
-  { id: "c15", i0: 118, i1: 125, t1: 41.3, ink: true, st: { three: { it: 1, hl: "red" }, five: { it: 1, hl: "red" }, years: { it: 1, hl: "red" } } },
-  { id: "q1", i0: 148, i1: 158, t1: 52.85, center: true, y: 960, size: 84, st: { full: { it: 1, hl: "or" }, not: { it: 1, hl: "or" }, "there?": { it: 1, hl: "or" } } },
-  { id: "c21", i0: 168, i1: 171, t1: 57.1, size: 86, st: { stop: { it: 1, hl: "red" } } },
-  { id: "q2", i0: 210, i1: 214, t1: 73.5, center: true, y: 960, size: 96, st: { "managing?": { it: 1, hl: "or" } } },
+  { id: "c15", i0: 118, i1: 125, t1: 41.75, ink: true, st: { three: { it: 1, hl: "red" }, five: { it: 1, hl: "red" }, years: { it: 1, hl: "red" } } },
+  { id: "q1", i0: 148, i1: 158, t1: 53.0, center: true, y: 960, size: 84, st: { full: { it: 1, hl: "or" }, not: { it: 1, hl: "or" }, "there?": { it: 1, hl: "or" } } },
+  { id: "c21", i0: 168, i1: 171, t1: 58.7, size: 86, st: { stop: { it: 1, hl: "red" } } },
+  { id: "q2", i0: 210, i1: 214, t1: 73.12, center: true, y: 960, size: 96, st: { "managing?": { it: 1, hl: "or" } } },
   { id: "c28", i0: 244, i1: 250, t1: ws(251) - .1, st: { fast: { it: 1, hl: "or" } } },
   { id: "c29", i0: 251, i1: 260, t1: 88.85, st: { catching: { hl: "lav" }, "up": { hl: "lav" } } },
 ];

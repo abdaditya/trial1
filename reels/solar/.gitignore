@@ -3,3 +3,4 @@ out/
 __pycache__/
 audio/mix.wav
 audio/bed.wav
+preview/*.mp4
