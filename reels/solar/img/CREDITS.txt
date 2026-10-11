@@ -3,3 +3,5 @@ Image credits (Wikimedia Commons):
 - khavda1-2.jpg: Khavda Solar Park, Umbra Space, CC BY 4.0
 - pylons1.jpg: Transmission towers and lines at sunset in East Texas, CC BY-SA
 - pylon_gr.jpg: Transmission tower in Greece, CC BY-SA
+- punjab.jpg: Aerial view of agricultural fields in Punjab, India, CC BY-SA
+- earth_day.jpg, dp.jpg: from repo main branch
