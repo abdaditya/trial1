@@ -21,7 +21,7 @@
 // A real 3D world (three.js) rendered deterministically: window.seek(t) sets every object from t,
 // renders, composites the 2D type layer, and returns text boxes for QA.
 // ===========================================================================
-const W = 1080, H = 1920, DUR = 10.6;
+const W = 1080, H = 1920, DUR = 80;
 const out = document.getElementById("c"), g = out.getContext("2d", { willReadFrequently: true });
 const SAFE = { x0: 90, x1: 990, y0: 250, y1: 1400 };
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), lerp = (a, b, k) => a + (b - a) * k, prog = (t, a, b) => clamp((t - a) / (b - a));
@@ -201,47 +201,182 @@ function drawPhone(t) {
   PHONE_T.needsUpdate = true;
 }
 
-// ---------- timeline ----------
-const T = { tap: 1.15, paid: 1.55, pull: 4.2, freeze: 7.9 };
+// ===========================================================================
+// THE CITY behind the street + the four landmarks of the story
+// ===========================================================================
+const CITYMATS = [0, 1, 2, 3, 4, 5].map(i => { const wm = mat([0x6b5a6e, 0x5d6b7a, 0x7a6658, 0x58606e, 0x6e5c5c, 0x4f5c6a][i], { emissiveMap: WIN(40 + i, .5), emissive: 0xffffff, emissiveIntensity: 1.5 }), side = mat([0x5a4a5e, 0x4d5b6a, 0x6a5648, 0x48505e, 0x5e4c4c, 0x3f4c5a][i]); return [wm, wm, side, side, wm, wm]; });
+const LANDMARK = { npci: new THREE.Vector3(0, 0, -62), you: new THREE.Vector3(-14, 0, -40), raju: new THREE.Vector3(14, 0, -44), rbi: new THREE.Vector3(0, 0, -104) };
+for (let x = -72; x <= 72; x += 7) for (let z = -14; z >= -136; z -= 7) {
+  const near = Object.values(LANDMARK).some(L => Math.hypot(x - L.x, z - L.z) < (L === LANDMARK.npci ? 14 : L === LANDMARK.rbi ? 15 : 9));
+  if (near || (Math.abs(x) < 9 && z > -40) || hash(x * 3 + 500, z * 7 + 900) < .12) continue;
+  const h = 4 + hash(x, z) * 10 + (1 - Math.min(1, Math.hypot(x, z + 60) / 70)) * 12, w = 3.6 + hash(z, x) * 2.4, d = 3.6 + hash(x + 1, z) * 2.4;
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), CITYMATS[(Math.abs(x * 7 + z * 3)) % 6]); b.position.set(x + (hash(x, 7) - .5) * 2, h / 2, z + (hash(7, z) - .5) * 2); b.receiveShadow = true; b.userData.city = { w, h, d }; S.add(b);
+}
+function signTexture(text, bg, fg, w = 1024, h = 256, font = 150) { return canvasTex(w, h, (x) => { x.fillStyle = bg; x.fillRect(0, 0, w, h); x.fillStyle = fg; x.font = `800 ${font}px Figtree, sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, w / 2, h / 2 + 6); }); }
+function sign(text, bg, fg, x, y, z, w, h, ry = 0) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: signTexture(text, bg, fg), toneMapped: false, fog: false })); m.position.set(x, y, z); m.rotation.y = ry; S.add(m); return m; }
+// NPCI: the switchboard — a glowing core with two spinning rings
+const NPCI = new THREE.Group(); NPCI.position.copy(LANDMARK.npci); S.add(NPCI);
+cyl(7, 8, 1.2, mat(0x2a3042), 0, .6, 0, 32, NPCI); cyl(2.2, 2.6, 20, glow(0x46d2ff, 1.6), 0, 10.6, 0, 24, NPCI); sph(2.4, glow(0xbff3ff, 2.4), 0, 21, 0, NPCI, 20);
+const RING1 = new THREE.Mesh(new THREE.TorusGeometry(7.5, .35, 10, 64), glow(0x46d2ff, 2.2)); RING1.position.y = 10; NPCI.add(RING1);
+const RING2 = new THREE.Mesh(new THREE.TorusGeometry(9.5, .25, 10, 64), glow(0xa98bff, 2)); RING2.position.y = 12; NPCI.add(RING2);
+sign("NPCI", "#0b1630", "#7ae0ff", 0, 25.2, LANDMARK.npci.z + .05, 10, 2.5);
+const NPCILIGHT = new THREE.PointLight(0x46d2ff, 60, 40, 1.5); NPCILIGHT.position.set(0, 12, 0); NPCI.add(NPCILIGHT);
+// the two banks
+function tower(L, w, h, col, glowCol, label) {
+  const m = mat(col, { flatShading: true, roughness: .35, metalness: .4, emissiveMap: WIN(77 + L.x, .7), emissive: 0xffffff, emissiveIntensity: 1.2 });
+  const t = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), m); t.position.set(L.x, h / 2, L.z); t.castShadow = true; S.add(t);
+  box(w * .7, 2, w * .7, glow(glowCol, 2), L.x, h + 1, L.z); box(w + .6, .6, w + .6, glow(glowCol, 1.5), L.x, h - 3, L.z);
+  sign(label, "#ffffff", "#" + glowCol.toString(16).padStart(6, "0"), L.x, h - 6.5, L.z + w / 2 + .05, w * .95, w * .24);
+  const pl = new THREE.PointLight(glowCol, 40, 30, 1.6); pl.position.set(L.x, h - 2, L.z + w); S.add(pl);
+  return { top: h, front: new THREE.Vector3(L.x, h - 9, L.z + w / 2 + .3) };
+}
+const YOURBANK = tower(LANDMARK.you, 8, 30, 0x2b5fb8, 0x3c8cff, "YOUR BANK");
+const RAJUBANK = tower(LANDMARK.raju, 8, 27, 0xb8622b, 0xff8a3c, "RAJU'S BANK");
+// RBI: the dome where banks settle up
+const RBI = new THREE.Group(); RBI.position.copy(LANDMARK.rbi); S.add(RBI);
+cyl(11, 12, 2, mat(0xe8dcc4), 0, 1, 0, 40, RBI); cyl(8, 8, 6, mat(0xf1e6cf), 0, 5, 0, 40, RBI);
+for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; cyl(.4, .4, 6, mat(0xfff6e2), Math.cos(a) * 9.6, 5, Math.sin(a) * 9.6, 10, RBI); }
+const DOME = new THREE.Mesh(new THREE.SphereGeometry(8, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), glow(0xffc95a, .5)); DOME.position.y = 8; RBI.add(DOME);
+sign("RBI", "#3a2a10", "#ffd36b", 0, 18.5, LANDMARK.rbi.z + .05, 8, 2.2); const RBILIGHT = new THREE.PointLight(0xffc95a, 0, 50, 1.4); RBILIGHT.position.set(0, 14, 6); RBI.add(RBILIGHT);
+
+// Raju's soundbox on the counter (it announces "₹10 received")
+const SOUNDBOX = new THREE.Group(); SOUNDBOX.position.set(.98, 1.1, .22); STALL.add(SOUNDBOX);
+box(.16, .2, .12, mat(0x1d1d22, { flatShading: false, roughness: .4 }), 0, .1, 0, SOUNDBOX);
+const SBLED = box(.11, .03, .005, glow(0x46ff9a, .3), 0, .16, .062, SOUNDBOX); const SBGRILL = cyl(.045, .045, .01, mat(0x444), 0, .07, .062, 12, SOUNDBOX); SBGRILL.rotation.x = Math.PI / 2;
+
+// ===========================================================================
+// THE ₹10 MESSAGE: a glowing capsule with a label and a light trail
+// ===========================================================================
+const TOKEN = new THREE.Group(); S.add(TOKEN);
+const TOKCORE = new THREE.Mesh(new THREE.CapsuleGeometry(.1, .16, 6, 16), new THREE.MeshStandardMaterial({ color: 0x7ae0ff, emissive: 0x46d2ff, emissiveIntensity: 3, roughness: .2 })); TOKCORE.rotation.z = Math.PI / 2; TOKEN.add(TOKCORE);
+const TOKHALO = new THREE.Sprite(new THREE.SpriteMaterial({ map: PUFFTEX, color: 0x7ae0ff, transparent: true, depthWrite: false, opacity: .9, blending: THREE.AdditiveBlending })); TOKHALO.scale.set(1.2, 1.2, 1); TOKEN.add(TOKHALO);
+const TOKLABEL = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(256, 128, (x) => { x.fillStyle = "#0b1630"; x.beginPath(); x.roundRect(8, 8, 240, 112, 56); x.fill(); x.strokeStyle = "#7ae0ff"; x.lineWidth = 6; x.stroke(); x.fillStyle = "#fff"; x.font = "800 64px Figtree"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("₹10", 128, 68); }), transparent: true, depthTest: false }));
+TOKLABEL.scale.set(.42, .21, 1); TOKLABEL.position.y = .32; TOKEN.add(TOKLABEL);
+const TOKLIGHT = new THREE.PointLight(0x7ae0ff, 4, 6, 1.5); TOKEN.add(TOKLIGHT);
+const TRAILN = 60, TRAIL = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: .85, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true, toneMapped: false })); TRAIL.frustumCulled = false; S.add(TRAIL);
+{ const pos = new Float32Array(TRAILN * 2 * 3), col = new Float32Array(TRAILN * 2 * 3), idx = []; for (let i = 0; i < TRAILN - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  TRAIL.geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3)); TRAIL.geometry.setAttribute("color", new THREE.BufferAttribute(col, 3)); TRAIL.geometry.setIndex(idx); }
+// the other payments of India: a stream of little lights flowing in and out of NPCI
+const STREAMN = 420, STREAM = new THREE.InstancedMesh(new THREE.SphereGeometry(.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xbff3ff, toneMapped: false }), STREAMN); STREAM.frustumCulled = false; S.add(STREAM);
+const STREAMCOL = [0x7ae0ff, 0xbff3ff, 0xa98bff, 0xffd36b].map(c => new THREE.Color(c)); for (let i = 0; i < STREAMN; i++) STREAM.setColorAt(i, STREAMCOL[i % 4]);
+// IOU notes (the twist) and the settlement flood into the RBI
+const IOUTEX = canvasTex(512, 256, (x) => { x.fillStyle = "#fff6dc"; x.fillRect(0, 0, 512, 256); x.strokeStyle = "#c9a24a"; x.lineWidth = 10; x.strokeRect(10, 10, 492, 236); x.fillStyle = "#3a2a10"; x.font = "800 92px Figtree"; x.textAlign = "center"; x.fillText("IOU ₹10", 256, 130); x.font = "600 36px Figtree"; x.fillText("Your bank → Raju's bank", 256, 196); });
+const IOU = new THREE.Mesh(new THREE.PlaneGeometry(8, 4), new THREE.MeshBasicMaterial({ map: IOUTEX, side: THREE.DoubleSide, toneMapped: false, transparent: true })); S.add(IOU);
+const FLOODN = 260, FLOOD = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.6, .8), new THREE.MeshBasicMaterial({ map: IOUTEX, side: THREE.DoubleSide, toneMapped: false }), FLOODN); FLOOD.frustumCulled = false; S.add(FLOOD);
+const SKY = S.children.find(o => o.geometry && o.geometry.type === "SphereGeometry" && o.material.side === THREE.BackSide);
+
+// ===========================================================================
+// TIMELINE
+// ===========================================================================
+const T = { tap: 2.05, paid: 2.45, pull: 5.1, freeze: 8.8, launch: 12.6, npci: 18.0, you: 25.2, back: 31.2, raju: 35.4, dive: 40.6, ding: 43.5, unfreeze: 43.9,
+  twist: 48.0, iou: 57.2, settle: 64.6, payoff: 69.8, end: 77.2 };
+const TOKK = [   // the message's route (positions over time; hold:1 = it waits there)
+  { t: T.launch, x: .03, y: 1.27, z: 2.13 }, { t: 13.6, x: .4, y: 3.6, z: 1.2 }, { t: 15.1, x: 0, y: 13, z: -12 }, { t: 17.2, x: 0, y: 12, z: -50 },
+  { t: T.npci, x: 0, y: 10, z: -62, hold: 1 }, { t: 22.6, x: 0, y: 10, z: -62, hold: 1 }, { t: 23.8, x: -7, y: 15, z: -52 }, { t: T.you, x: -14, y: 21, z: -35.6, hold: 1 },
+  { t: T.back, x: -14, y: 21, z: -35.6, hold: 1 }, { t: 32.3, x: -6, y: 15, z: -54 }, { t: 33.2, x: 0, y: 10, z: -62 }, { t: 34.2, x: 7, y: 15, z: -56 }, { t: T.raju, x: 14, y: 18, z: -39.6, hold: 1 },
+  { t: T.dive, x: 14, y: 18, z: -39.6, hold: 1 }, { t: 41.7, x: 7, y: 12, z: -18 }, { t: 42.7, x: 2.4, y: 4, z: .8 }, { t: T.ding, x: .98, y: 1.36, z: .26, hold: 1 }, { t: 80, x: .98, y: 1.36, z: .26 },
+];
 const CAMK = [   // camera: position (px,py,pz) + look target (lx,ly,lz) + fov
   { t: 0, px: .04, py: 1.47, pz: 2.55, lx: .03, ly: 1.25, lz: 2.11, fov: 36 },
-  { t: 4.2, px: .05, py: 1.47, pz: 2.66, lx: .03, ly: 1.25, lz: 2.1, fov: 36, hold: 1 },
-  { t: 6.6, px: 2.1, py: 1.55, pz: 7.4, lx: -.2, ly: 2.15, lz: 0, fov: 40 },
-  { t: 8.7, px: 1.8, py: 1.6, pz: 6.9, lx: -.2, ly: 2.2, lz: 0, fov: 40 },
-  { t: 10.6, px: 1.5, py: 1.65, pz: 6.5, lx: -.2, ly: 2.25, lz: 0, fov: 41 },
+  { t: T.pull, px: .05, py: 1.47, pz: 2.66, lx: .03, ly: 1.25, lz: 2.1, fov: 36, hold: 1 },
+  { t: 7.5, px: 2.1, py: 1.55, pz: 7.4, lx: -.2, ly: 2.15, lz: 0, fov: 40 },
+  { t: 10.4, px: 1.6, py: 1.62, pz: 6.6, lx: -.2, ly: 2.2, lz: 0, fov: 40 },
+  { t: 12.2, px: .45, py: 1.55, pz: 2.95, lx: .1, ly: 1.4, lz: 1.9, fov: 38 },                 // push in on the phone (frozen world)
+  { t: 13.7, px: .9, py: 2.0, pz: 3.6, lx: .4, ly: 3.4, lz: 1.0, fov: 42 },                    // tilt up as the message leaves
+  { t: 15.2, px: 3, py: 9, pz: 5, lx: 0, ly: 12, lz: -14, fov: 46 },                           // crane up behind it
+  { t: 17.3, px: 4, py: 17, pz: -8, lx: 0, ly: 11, lz: -58, fov: 46 },                         // over the rooftops: the city reveal
+  { t: 19.2, px: 24, py: 18, pz: -34, lx: 0, ly: 11, lz: -62, fov: 44 },                       // arrive at NPCI
+  { t: 22.8, px: 26, py: 24, pz: -82, lx: 0, ly: 11, lz: -62, fov: 44 },                       // orbit the switchboard
+  { t: 24.8, px: 8, py: 24, pz: -12, lx: -14, ly: 19, lz: -40, fov: 44 },                      // pull out: your bank
+  { t: 30.9, px: 3, py: 23, pz: -15, lx: -14, ly: 19, lz: -40, fov: 42 },
+  { t: 33.2, px: 0, py: 27, pz: -26, lx: 0, ly: 11, lz: -62, fov: 46 },                        // back past NPCI
+  { t: 35.6, px: -6, py: 22, pz: -15, lx: 14, ly: 17, lz: -44, fov: 44 },                      // Raju's bank
+  { t: 40.4, px: -3, py: 21, pz: -17, lx: 14, ly: 17, lz: -44, fov: 42, hold: 1 },
+  { t: 41.9, px: 6, py: 14, pz: -2, lx: 2.4, ly: 4, lz: .8, fov: 44 },                         // dive back to the street
+  { t: 43.4, px: 1.55, py: 1.55, pz: 1.55, lx: .98, ly: 1.25, lz: .25, fov: 36, hold: 1 },     // the soundbox
+  { t: 44.6, px: 1.6, py: 1.55, pz: 1.6, lx: .98, ly: 1.25, lz: .25, fov: 36, hold: 1 },
+  { t: 47.0, px: 2.1, py: 1.6, pz: 7.4, lx: -.2, ly: 2.15, lz: 0, fov: 40, hold: 1 },          // time runs again
+  { t: 50.0, px: 0, py: 38, pz: 30, lx: 0, ly: 18, lz: -42, fov: 50 },                         // rise: both banks in view
+  { t: 56.8, px: 0, py: 40, pz: 26, lx: 0, ly: 18, lz: -42, fov: 50 },
+  { t: 61.5, px: 4, py: 33, pz: 4, lx: 6, ly: 19, lz: -42, fov: 46 },                          // the IOU crosses
+  { t: 64.4, px: 22, py: 38, pz: -36, lx: 0, ly: 12, lz: -92, fov: 48 },
+  { t: 68.8, px: 30, py: 42, pz: -60, lx: 0, ly: 8, lz: -104, fov: 50, hold: 1 },               // night: everyone settles at the RBI
+  { t: 70.6, px: 2.6, py: 1.7, pz: 8.0, lx: -.2, ly: 2.2, lz: 0, fov: 40, hold: 1 },            // back to the stall
+  { t: 80, px: 1.4, py: 1.75, pz: 6.2, lx: -.2, ly: 2.35, lz: 0, fov: 42 },
 ];
-function frozenTime(t) { return t < T.freeze ? t : T.freeze + (t - T.freeze) * Math.exp(-(t - T.freeze) * 6) * .3; }   // world clock eases to a stop
+// the world's own clock: runs, stops at the freeze, runs again after the ding
+function worldTime(t) { if (t < T.freeze) return t; const stopAt = T.freeze + .05; if (t < T.unfreeze) return stopAt + (t - T.freeze) * Math.exp(-(t - T.freeze) * 6) * .3 * 0; return stopAt + (t - T.unfreeze); }
+// the HUD clock: the real 2 seconds, stretched across the journey
+const CLOCK = [[T.freeze, 0], [T.launch, 0], [T.npci, .3], [T.you + 1, .55], [T.back, .9], [T.raju + 1, 1.45], [T.dive, 1.7], [T.ding, 2.0]];
+function clockAt(t) { for (let i = 1; i < CLOCK.length; i++) if (t <= CLOCK[i][0]) return lerp(CLOCK[i - 1][1], CLOCK[i][1], prog(t, CLOCK[i - 1][0], CLOCK[i][0])); return 2; }
+const FREEZE = t => eo(prog(t, T.freeze, T.freeze + .6)) * (1 - eo(prog(t, T.unfreeze, T.unfreeze + .7)));
 
+function tokenAt(t) { const p = track(TOKK, t); return new THREE.Vector3(p.x, p.y, p.z); }
 function setWorld(t) {
-  const wt = frozenTime(t);                                  // the world's own clock (stops at the freeze)
-  // camera
-  const c = track(CAMK, t); CAM.position.set(c.px, c.py, c.pz); CAM.fov = c.fov; CAM.updateProjectionMatrix(); CAM.lookAt(c.lx, c.ly, c.lz);
-  // hand + phone: held up in front of the stall, slight natural sway
+  const wt = worldTime(t);
+  const c = track(CAMK, t); CAM.position.set(c.px, Math.max(.6, c.py), c.pz); CAM.fov = c.fov; CAM.updateProjectionMatrix(); CAM.lookAt(c.lx, c.ly, c.lz);
+  // fog + sky: street haze near the stall, long views over the city, night falls for the settlement
+  const high = clamp((CAM.position.y - 3) / 10), night = eio(prog(t, T.settle - .4, T.settle + 3)) * (1 - eio(prog(t, T.payoff, T.payoff + .8)));
+  S.fog.near = lerp(18, 60, high); S.fog.far = lerp(70, 230, high); S.fog.color.setRGB(lerp(.9, .25, night), lerp(.6, .22, night), lerp(.42, .4, night));
+  if (SKY) SKY.material.color.setRGB(lerp(1, .32, night), lerp(1, .32, night), lerp(1, .5, night));
+  HEMI.intensity = lerp(1.1, .45, night); SUN.intensity = lerp(2.6, .25, night);
+  // hand + phone
   const sway = Math.sin(wt * 1.3) * .004;
   HAND.position.set(.03 + sway, 1.22 + Math.sin(wt * 1.7) * .003, 2.12); HAND.rotation.set(-.35, .06, .03);
   const th = HAND.userData.thumb, near = eo(prog(t, T.tap - .6, T.tap - .1)) * (1 - eio(prog(t, T.tap + .2, T.tap + .7))), tapK = Math.sin(clamp((t - T.tap + .15) / .3) * Math.PI);
   th.position.set(lerp(.06, .012, near), lerp(-.1, -.048, near), .008 + (1 - tapK) * .008); th.rotation.set(.2, 0, .7); th.visible = near > .02;
-  // your head/body fade in once the camera leaves your eyes
   const away = clamp((CAM.position.distanceTo(new THREE.Vector3(.2, 1.6, 2.62)) - .45) / .5);
   YOUHEAD.forEach(m => { m.material.opacity = away; m.visible = away > .02; });
   drawPhone(t);
-  // Raju pours chai: kettle tilts up and down on a loop
+  // Raju + steam + bird + string lights run on the world clock (they freeze with time)
   const pour = .5 + .5 * Math.sin(wt * 1.6);
   RAJU.userData.armR.rotation.set(-1.25 - pour * .12, 0, -.55); RAJU.userData.armL.rotation.set(-1.05, 0, .35);
-  RAJU.userData.head.rotation.y = Math.sin(wt * .7) * .2;
+  RAJU.userData.head.rotation.y = t > T.ding && t < T.ding + 3 ? lerp(Math.sin(wt * .7) * .2, .7, eo(prog(t, T.ding, T.ding + .4)) * (1 - eo(prog(t, T.ding + 2, T.ding + 3)))) : Math.sin(wt * .7) * .2;   // he glances at the soundbox
   KETTLE.position.set(-.08, 1.36 + pour * .06, -.02); KETTLE.rotation.z = -pour * .5;
   POUR.visible = pour > .55; POUR.scale.y = .6 + pour * .5;
-  // steam rises from the kettle and the glasses
   PUFFS.forEach((p, i) => { const per = 2.4, ph = ((wt + i * per / PUFFS.length) % per) / per, src = i % 3 === 0 ? [-.4, 1.6, -.05] : [.2 + (i % 5) * .1, 1.22, .18];
     p.position.set(src[0] + Math.sin(ph * 6 + i) * .05, src[1] + ph * .55, src[2]); const s = .05 + ph * .2; p.scale.set(s, s, s); p.material.opacity = .45 * Math.sin(ph * Math.PI); });
-  // bird glides across the street, flapping
-  const bk = (wt * .9) % 14; BIRD.position.set(-7 + bk * 1.0, 3.6 + Math.sin(bk * .9) * .2, 2.2); BIRD.rotation.y = 0;
+  const bk = (wt * .9) % 14; BIRD.position.set(-7 + bk * 1.0, 3.6 + Math.sin(bk * .9) * .2, 2.2);
   const fl = Math.sin(wt * 18) * .7; BIRD.userData.w1.rotation.x = fl; BIRD.userData.w2.rotation.x = -fl;
-  // string lights twinkle
   BULBS.forEach((b, i) => b.material.emissiveIntensity = 1.6 + Math.sin(wt * 3 + i) * .6);
+  // landmarks breathe on the real clock (the journey is shown in slow motion)
+  RING1.rotation.set(Math.PI / 2 + Math.sin(t * .3) * .25, 0, t * .4); RING2.rotation.set(Math.PI / 2 - .35, t * -.25, 0);
+  // the message
+  const tokOn = t >= T.launch - .05 && t < T.ding + .25, p = tokenAt(t);
+  TOKEN.visible = tokOn; TRAIL.visible = tokOn && t > T.launch + .2;
+  const born = eob(clamp((t - T.launch + .05) / .45)), land = 1 - eio(prog(t, T.ding, T.ding + .25));
+  const inside = (t > T.you + .5 && t < T.back - .3) || (t > T.raju + .5 && t < T.dive - .3);       // inside a bank: it shrinks into the building
+  const sz = clamp(CAM.position.distanceTo(p) / 6, 1, 9); TOKEN.scale.setScalar(Math.max(.001, born * land * (inside ? .001 : 1) * sz));
+  TOKEN.position.copy(p); TOKCORE.rotation.y = t * 4;
+  if (TRAIL.visible) { const pos = TRAIL.geometry.attributes.position.array, col = TRAIL.geometry.attributes.color.array, w = .05 * clamp(CAM.position.distanceTo(p) / 6, 1, 9);
+    for (let i = 0; i < TRAILN; i++) { const tt = t - i * .02, q = tokenAt(Math.max(T.launch, tt)), q2 = tokenAt(Math.max(T.launch, tt - .02)), dir = q.clone().sub(q2), side = dir.clone().cross(CAM.position.clone().sub(q)).normalize().multiplyScalar(w * (1 - i / TRAILN));
+      pos.set([q.x + side.x, q.y + side.y, q.z + side.z, q.x - side.x, q.y - side.y, q.z - side.z], i * 6); const k = (1 - i / TRAILN) ** 1.5; col.set([.5 * k, .9 * k, k, .5 * k, .9 * k, k], i * 6); }
+    TRAIL.geometry.attributes.position.needsUpdate = true; TRAIL.geometry.attributes.color.needsUpdate = true; }
+  // India's other payments stream through NPCI the whole time
+  const m4 = new THREE.Matrix4(), streamA = clamp((CAM.position.y - 4) / 6);
+  for (let i = 0; i < STREAMN; i++) {
+    const a = hash(i, 1) * Math.PI * 2, el = (hash(i, 2) - .2) * .9, r0 = 45 + hash(i, 3) * 40, inward = i % 2 === 0, ph = ((t * .22 + hash(i, 4)) % 1), k = inward ? ph : 1 - ph;
+    const far = new THREE.Vector3(Math.cos(a) * r0, 10 + Math.sin(el) * 20 + 8, Math.sin(a) * r0).add(LANDMARK.npci), core = LANDMARK.npci.clone().add(new THREE.Vector3(0, 11, 0));
+    const q = far.clone().lerp(core, k); q.y += Math.sin(k * Math.PI) * 10; m4.makeScale(streamA, streamA, streamA); m4.setPosition(q); STREAM.setMatrixAt(i, m4);
+  }
+  STREAM.instanceMatrix.needsUpdate = true; STREAM.visible = streamA > .02;
+  // soundbox lights up on the ding
+  const sb = t >= T.ding ? Math.exp(-(t - T.ding) * 1.2) : 0; SBLED.material.emissiveIntensity = .3 + sb * 4;
+  // the IOU: born at your bank, drifts to Raju's bank
+  const iouK = eio(prog(t, T.iou + .3, T.iou + 4.0)), iouOn = t > T.iou && t < T.settle + 1.2;
+  IOU.visible = iouOn; if (iouOn) { const a = new THREE.Vector3(-14, 27, -33), b = new THREE.Vector3(12, 25, -37); IOU.position.copy(a.lerp(b, iouK)); IOU.position.y += Math.sin(iouK * Math.PI) * 4 + Math.sin(t * 2) * .2; IOU.lookAt(CAM.position); IOU.scale.setScalar(eob(clamp((t - T.iou) / .5)) * (1 - eio(prog(t, T.settle + .6, T.settle + 1.2)))); }
+  // settlement: IOUs from every corner of the city flood into the RBI, which glows
+  const flood = t > T.settle && t < T.payoff + .4; FLOOD.visible = flood;
+  if (flood) for (let i = 0; i < FLOODN; i++) { const st = T.settle + .3 + hash(i, 9) * 2.6, k = eio(prog(t, st, st + 1.6)), a = hash(i, 5) * Math.PI * 2, r0 = 30 + hash(i, 6) * 50;
+    const from = new THREE.Vector3(Math.cos(a) * r0, 14 + hash(i, 7) * 16, -60 + Math.sin(a) * r0 * .7), to = LANDMARK.rbi.clone().add(new THREE.Vector3(0, 10, 0)), q = from.lerp(to, k); q.y += Math.sin(k * Math.PI) * 12;
+    m4.compose(q, new THREE.Quaternion().setFromEuler(new THREE.Euler(t + i, t * .7 + i, 0)), new THREE.Vector3(1, 1, 1).multiplyScalar((t < st ? 0 : 1) * (1 - k * .8))); FLOOD.setMatrixAt(i, m4); }
+  FLOOD.instanceMatrix.needsUpdate = true;
+  const rbiGlow = eo(prog(t, T.settle + 1.5, T.settle + 3.5)) * (1 - prog(t, T.payoff, T.payoff + .6)); DOME.material.emissiveIntensity = .5 + rbiGlow * 2.5; RBILIGHT.intensity = rbiGlow * 120;
 }
 
-// ---------- 2D type layer ----------
+// ===========================================================================
+// 2D LAYER: captions (one at a time), ledger cards, HUD, title, end card
+// ===========================================================================
 let BOXES = [];
 const F = { body: (s, w = 800) => `${w} ${s}px Figtree`, disp: s => `800 ${s}px "Bricolage Grotesque"`, serif: s => `italic ${s}px "Instrument Serif"` };
 function lum(c) { const l = v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; return .2126 * l(c[0]) + .7152 * l(c[1]) + .0722 * l(c[2]); }
@@ -249,50 +384,133 @@ function contrastUnder(x, y, w, h) { const X = clamp(x | 0, 0, W - 1), Y = clamp
   for (let i = 0; i < d.length; i += 44) L.push(lum([d[i], d[i + 1], d[i + 2]])); L.sort((a, b) => a - b); const bg = L[Math.floor(L.length * .9)]; return 1.05 / (bg + .05); }
 // white type with a soft dark glow; words pop in one by one
 function words(id, text, font, size, y, t, t0, t1, opts = {}) {
-  if (t < t0 || t > t1) return; const out = eio(prog(t, t1 - .35, t1));
+  if (t < t0 || t > t1) return;
+  { g.save(); g.font = font; const full = g.measureText(text).width; g.restore();
+    if (full > 860 && !opts._line) {   // too wide: two balanced lines, the second one a beat later
+      const ws = text.split(" "); let best = 1, bd = 1e9; g.save(); g.font = font;
+      for (let i = 1; i < ws.length; i++) { const d = Math.abs(g.measureText(ws.slice(0, i).join(" ")).width - g.measureText(ws.slice(i).join(" ")).width); if (d < bd) { bd = d; best = i; } } g.restore();
+      const l1 = ws.slice(0, best).join(" "), l2 = ws.slice(best).join(" ");
+      words(id + ":1", l1, font, size, y, t, t0, t1, { ...opts, _line: 1, group: opts.group || id });
+      words(id + ":2", l2, font, size, y + size * 1.2, t, t0 + (ws.length > 0 ? best * (opts.stagger ?? .1) : 0), t1, { ...opts, _line: 2, group: opts.group || id, accent: (opts.accent || []).map(i => i - best), serifWords: (opts.serifWords || []).map(i => i - best) });
+      return; } }
+  const out = eio(prog(t, t1 - .35, t1)), st = opts.stagger ?? .1;
   g.save(); g.font = font; g.textBaseline = "alphabetic"; g.textAlign = "left"; g.letterSpacing = (opts.ls ?? -1) + "px";
   const parts = text.split(" "), sp = g.measureText(" ").width, ws = parts.map(p => g.measureText(p).width), tw = ws.reduce((a, b) => a + b, 0) + sp * (parts.length - 1);
-  let x = 540 - tw / 2; const y0 = y - size * .78;
+  const cx = opts.x ?? 540; let x = cx - tw / 2; const y0 = y - size * .78;
   g.save(); g.filter = `blur(${Math.max(10, size * .12)}px)`; g.fillStyle = "rgba(8,6,20,1)"; g.globalAlpha = .85 * (1 - out) * eo(prog(t, t0, t0 + .4)); for (let k = 0; k < 4; k++) g.fillText(text, x, y); g.restore();
   const contrast = contrastUnder(x, y0, tw, size);
-  parts.forEach((p, i) => { const k = prog(t, t0 + i * (opts.stagger ?? .12), t0 + i * (opts.stagger ?? .12) + .35), s = lerp(.6, 1, eob(k));
-    g.save(); g.globalAlpha = clamp(k * 2) * (1 - out); g.fillStyle = opts.color || "#fff"; g.translate(x + ws[i] / 2, y - size * .3 - out * 40); g.scale(s, s); g.translate(-(x + ws[i] / 2), -(y - size * .3)); g.fillText(p, x, y); g.restore(); x += ws[i] + sp; });
+  parts.forEach((p, i) => { const k = prog(t, t0 + i * st, t0 + i * st + .35), s = lerp(.6, 1, eob(k));
+    g.save(); g.globalAlpha = clamp(k * 2) * (1 - out); g.fillStyle = (opts.accent && opts.accent.includes(i)) ? "#7ae0ff" : (opts.color || "#fff"); g.font = (opts.serifWords && opts.serifWords.includes(i)) ? F.serif(size * 1.1) : font;
+    g.translate(x + ws[i] / 2, y - size * .3 - out * 40); g.scale(s, s); g.translate(-(x + ws[i] / 2), -(y - size * .3)); g.fillText(p, x, y); g.restore(); x += ws[i] + sp; });
   g.restore();
-  const allIn = t0 + (parts.length - 1) * (opts.stagger ?? .12) + .35;
-  BOXES.push({ id, group: opts.group, words: parts.length, x: 540 - tw / 2, y: y0, w: tw, h: size, a: (1 - out) * eo(prog(t, t0, t0 + .4)), read: out > .02 || t < allIn ? 0 : 1, contrast, size });
+  const allIn = t0 + (parts.length - 1) * st + .35;
+  BOXES.push({ id, group: opts.group, words: parts.length, x: cx - tw / 2, y: y0, w: tw, h: size, a: (1 - out) * eo(prog(t, t0, t0 + .4)), read: out > .02 || t < allIn ? 0 : 1, contrast, size });
 }
-function hud(t) { // time-freeze clock
-  const a = win(t, T.freeze + .1, DUR + 1, .4, .1); if (a <= 0) return;
-  g.save(); g.globalAlpha = a; g.font = F.body(42, 800); const label = "TIME  0.00 s", tw = g.measureText(label).width + 110, x = 540 - tw / 2, y = 300;
-  g.fillStyle = "rgba(10,14,30,.82)"; g.beginPath(); g.roundRect(x, y, tw, 84, 42); g.fill(); g.fillStyle = "#7ad7ff"; g.beginPath(); g.arc(x + 42, y + 42, 10, 0, 6.283); g.fill();
+function hud(t) { // time-freeze clock: the real 2 seconds, in slow motion
+  const a = win(t, T.freeze + .1, T.unfreeze + 3.4, .4, .4); if (a <= 0) return;
+  const v = clockAt(t), done = t >= T.ding;
+  g.save(); g.globalAlpha = a; g.font = F.body(42, 800); const label = `TIME  ${v.toFixed(2)} s`, tw = g.measureText("TIME  0.00 s").width + 110, x = 540 - tw / 2, y = 290;
+  g.fillStyle = "rgba(10,14,30,.82)"; g.beginPath(); g.roundRect(x, y, tw, 84, 42); g.fill(); g.fillStyle = done ? "#46ff9a" : "#7ad7ff"; g.beginPath(); g.arc(x + 42, y + 42, 10, 0, 6.283); g.fill();
   g.fillStyle = "#fff"; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(label, x + 70, y + 44); g.restore();
   BOXES.push({ id: "hud", x, y, w: tw, h: 84, a, read: a, contrast: 15, size: 42 });
+}
+// ledger card: what the bank actually does (lines tick in)
+function card(id, t, t0, t1, title, color, lines) {
+  const a = win(t, t0, t1, .45, .35); if (a <= 0) return;
+  const w = 820, lh = 92, h = 130 + lines.length * lh, x = 130, y = 1360 - h + (1 - eob(clamp((t - t0) / .5))) * 80;
+  g.save(); g.globalAlpha = a; g.shadowColor = "rgba(0,0,0,.45)"; g.shadowBlur = 50; g.shadowOffsetY = 20; g.fillStyle = "rgba(255,255,255,.97)"; g.beginPath(); g.roundRect(x, y, w, h, 36); g.fill(); g.shadowColor = "transparent";
+  g.fillStyle = color; g.beginPath(); g.roundRect(x, y, w, 96, [36, 36, 0, 0]); g.fill();
+  g.fillStyle = "#fff"; g.font = F.body(44, 800); g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(title, x + 44, y + 50);
+  lines.forEach((ln, i) => { const k = eo(prog(t, ln.t, ln.t + .35)); if (k <= 0) return; const ly = y + 96 + 34 + i * lh + (1 - k) * 20; g.globalAlpha = a * k;
+    g.fillStyle = "#1b2233"; g.font = F.body(42, 600); g.textAlign = "left"; g.fillText(ln.l, x + 44, ly + 18);
+    g.textAlign = "right"; g.font = F.body(44, 800); g.fillStyle = ln.c || "#1fa463"; g.fillText(typeof ln.r === "function" ? ln.r(t) : ln.r, x + w - 44, ly + 18); });
+  g.restore();
+  BOXES.push({ id, x, y, w, h, a, read: a, contrast: 14, size: 42 });
+}
+function pinned(id, text, t, t0, t1, world, color = "#46ff9a") { // a pill pinned to a 3D object
+  const a = win(t, t0, t1, .35, .35); if (a <= 0) return; const v = world.clone().project(CAM), sx = (v.x * .5 + .5) * W, sy = Math.max(460, (-v.y * .5 + .5) * H - 150);
+  g.save(); g.font = F.body(46, 800); const tw = g.measureText(text).width + 110, x = clamp(sx - tw / 2, 100, 980 - tw), y = clamp(sy, 300, 1300), s = lerp(.6, 1, eob(clamp((t - t0) / .4)));
+  g.translate(x + tw / 2, y + 45); g.scale(s, s); g.translate(-(x + tw / 2), -(y + 45)); g.globalAlpha = a;
+  g.fillStyle = "rgba(10,14,30,.88)"; g.beginPath(); g.roundRect(x, y, tw, 90, 45); g.fill(); g.fillStyle = color; g.beginPath(); g.arc(x + 44, y + 45, 11, 0, 6.283); g.fill();
+  g.fillStyle = "#fff"; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(text, x + 72, y + 47); g.restore();
+  BOXES.push({ id, x, y, w: tw, h: 90, a, read: a, contrast: 15, size: 46 });
+}
+function title(t) { // "UPI, explained" lockup in the first seconds
+  const a = win(t, .1, 1.95, .35, .35); if (a <= 0) return;
+  g.save(); g.globalAlpha = a; g.textAlign = "center"; g.textBaseline = "alphabetic";
+  g.save(); g.filter = "blur(16px)"; g.fillStyle = "rgba(8,6,20,.9)"; g.font = F.disp(170); for (let k = 0; k < 3; k++) g.fillText("UPI", 540, 440); g.font = F.serif(104); g.fillText("explained", 560, 540); g.restore();
+  const k = eob(clamp((t - .1) / .5)); g.save(); g.translate(540, 380); g.scale(lerp(.7, 1, k), lerp(.7, 1, k)); g.translate(-540, -380); g.fillStyle = "#fff"; g.font = F.disp(170); g.letterSpacing = "-5px"; g.fillText("UPI", 540, 440); g.restore();
+  const k2 = eio(prog(t, .45, 1.0)); g.save(); g.beginPath(); g.rect(330, 450, 460 * k2, 130); g.clip(); g.fillStyle = "#7ae0ff"; g.font = F.serif(104); g.fillText("explained", 560, 540); g.restore();
+  g.restore();
+  const cA = contrastUnder(380, 310, 320, 140);
+  BOXES.push({ id: "title", group: "title", words: 2, x: 340, y: 300, w: 440, h: 270, a, read: t > 1.0 && t < 1.6 ? 1 : 0, contrast: cA, size: 104 });
+}
+function endCard(t) {
+  const k = eo(prog(t, T.end, T.end + .6)); if (k <= 0) return;
+  g.fillStyle = `rgba(7,10,22,${k * .82})`; g.fillRect(0, 0, W, H);
+  words("e1", "@zbacktrack", F.disp(110), 110, 930, t, T.end + .3, DUR + 1, { stagger: 0 });
+  words("e2", "Follow for more, explained.", F.body(46, 600), 46, 1040, t, T.end + .7, DUR + 1, { stagger: .06 });
 }
 
 function seek(t) {
   BOXES = [];
   setWorld(t);
   R.render(S, CAM);
-  // freeze grade: colour drains to a cool tone as time stops, with a ripple
-  const fz = eo(prog(t, T.freeze, T.freeze + .6));
-  g.filter = fz > .01 ? `saturate(${1 - .55 * fz}) brightness(${1 - .08 * fz}) contrast(${1 + .08 * fz})` : "none";
+  // freeze grade: colour drains to a cool tone while time is stopped; ripples on stop and on restart
+  const fz = FREEZE(t);
+  g.filter = fz > .01 ? `saturate(${1 - .5 * fz}) brightness(${1 - .06 * fz}) contrast(${1 + .08 * fz})` : "none";
   g.drawImage(R.domElement, 0, 0); g.filter = "none";
-  if (fz > .01) { g.fillStyle = `rgba(40,80,170,${.16 * fz})`; g.fillRect(0, 0, W, H);
-    const rk = prog(t, T.freeze, T.freeze + .9); if (rk < 1) { g.strokeStyle = `rgba(190,230,255,${.6 * (1 - rk)})`; g.lineWidth = 10 * (1 - rk) + 2; g.beginPath(); g.arc(540, 980, rk * 1300, 0, 6.283); g.stroke(); } }
-  // type
-  // the phone says "₹10" itself — the only line is the payoff of the tap
+  if (fz > .01) { g.fillStyle = `rgba(40,80,170,${.14 * fz})`; g.fillRect(0, 0, W, H); }
+  for (const [t0, col] of [[T.freeze, "190,230,255"], [T.unfreeze, "255,236,180"]]) { const rk = prog(t, t0, t0 + .9); if (rk > 0 && rk < 1) { g.strokeStyle = `rgba(${col},${.6 * (1 - rk)})`; g.lineWidth = 10 * (1 - rk) + 2; g.beginPath(); g.arc(540, 980, rk * 1300, 0, 6.283); g.stroke(); } }
+  // soft top gradient behind captions (fades with them)
+  { const capA = Math.max(...[[T.paid + .15, T.pull + .15], [T.pull + 1.15, T.freeze - .05], [T.freeze + .35, 11.9], [12.4, 40.6], [T.ding + 2.7, T.payoff - .1], [T.payoff + .5, T.end]].map(([a, b]) => win(t, a, b, .4, .4)));
+    if (capA > .01) { const gr = g.createLinearGradient(0, 0, 0, 840); gr.addColorStop(0, `rgba(6,8,18,${.55 * capA})`); gr.addColorStop(.45, `rgba(6,8,18,${.5 * capA})`); gr.addColorStop(1, "rgba(6,8,18,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 840); } }
+  // ---- the story, one line at a time ----
+  title(t);
   words("t2", "That took 2 seconds.", F.disp(92), 92, 400, t, T.paid + .15, T.pull + .15, { stagger: .07 });
   words("t3", "What really happened?", F.body(78), 78, 450, t, T.pull + 1.15, T.freeze - .05, { stagger: .1 });
-  words("t4", "Let's freeze time.", F.disp(100), 100, 540, t, T.freeze + .35, DUR + 1, { stagger: .16 });
+  words("t4", "Let's freeze time.", F.disp(100), 100, 540, t, T.freeze + .35, 11.9, { stagger: .14 });
+  words("c1", "Your ₹10 leaves as a message.", F.body(72), 72, 520, t, 12.4, 15.4, { stagger: .08, accent: [1] });
+  words("c2", "First stop: NPCI.", F.disp(96), 96, 520, t, 15.7, 18.4, { stagger: .12, accent: [2] });
+  words("c3", "Every UPI payment in India passes through it.", F.body(64), 64, 520, t, 18.7, 22.9, { stagger: .07 });
+  words("c4", "Next: your bank.", F.disp(92), 92, 520, t, 23.0, 25.3, { stagger: .12 });
+  card("k1", t, 25.4, 31.0, "YOUR BANK", "#2b5fb8", [{ t: 25.9, l: "Is it really you?", r: "PIN ✓" }, { t: 26.8, l: "Do you have ₹10?", r: "Yes ✓" },
+    { t: 27.8, l: "Your balance", r: tt => "₹" + Math.round(lerp(1250, 1240, eio(prog(tt, 28.0, 28.8)))).toLocaleString("en-IN"), c: "#1b2233" }]);
+  words("c5", "It takes ₹10 from you.", F.body(72), 72, 520, t, 27.9, 31.0, { stagger: .08 });
+  words("c6", "Back through NPCI…", F.body(72), 72, 520, t, 31.3, 33.9, { stagger: .09 });
+  words("c7", "…to Raju's bank.", F.disp(92), 92, 520, t, 34.0, 36.2, { stagger: .1 });
+  card("k2", t, 35.8, 40.6, "RAJU'S BANK", "#c8642a", [{ t: 36.3, l: "Is raju@upi real?", r: "Yes ✓" },
+    { t: 37.3, l: "Raju's balance", r: tt => "₹" + Math.round(lerp(3420, 3430, eio(prog(tt, 37.6, 38.4)))).toLocaleString("en-IN"), c: "#1b2233" }]);
+  words("c8", "It adds ₹10 for Raju.", F.body(72), 72, 520, t, 37.5, 40.6, { stagger: .08 });
+  pinned("sb", "₹10 received", t, T.ding + .05, T.ding + 2.6, new THREE.Vector3(.98, 1.35, .22));
+  words("c9", "2 seconds. Done.", F.disp(100), 100, 540, t, T.ding + 2.7, T.twist - .1, { stagger: .14 });
+  words("c10", "But here's the twist…", F.body(78), 78, 520, t, T.twist + .2, 51.0, { stagger: .1 });
+  words("c11", "Your bank hasn't paid Raju's bank.", F.body(68), 68, 520, t, 51.2, 54.6, { stagger: .08 });
+  words("c12", "Not a single rupee. Yet.", F.disp(92), 92, 520, t, 54.8, 57.1, { stagger: .1 });
+  words("c13", "Raju's bank paid him from its own money…", F.body(62), 62, 520, t, 57.4, 61.1, { stagger: .07 });
+  words("c14", "…trusting your bank to pay later.", F.body(66), 66, 520, t, 61.3, 64.5, { stagger: .08 });
+  words("c15", "Later, banks settle up in bulk.", F.body(70), 70, 520, t, T.settle + .2, 67.6, { stagger: .08 });
+  words("c16", "Through the RBI.", F.disp(96), 96, 520, t, 67.8, T.payoff - .1, { stagger: .12 });
+  words("c17", "UPI doesn't move money.", F.body(76), 76, 500, t, T.payoff + .5, 73.6, { stagger: .1 });
+  words("c18", "It moves trust.", F.disp(130), 130, 560, t, 73.8, T.end - .05, { stagger: .14, serifWords: [2] });
   hud(t);
-  // vignette + grain-free (3D is clean); fade in
+  endCard(t);
   const v = g.createRadialGradient(540, 960, 600, 540, 960, 1300); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.35)"); g.fillStyle = v; g.fillRect(0, 0, W, H);
-  const f = 1 - prog(t, 0, .2); if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); }
+  const f = Math.max(1 - prog(t, 0, .2), prog(t, DUR - .5, DUR)); if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); }
   return BOXES.map(b => ({ ...b, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1) }));
 }
 window.DUR = DUR; window.SAFE = SAFE; window.T = T;
 window.ready = (async () => { await Promise.all([F.body(60), F.body(30, 600), F.disp(100), F.serif(100)].map(f => document.fonts.load(f)));
-  window.seek = seek; window.CUES = [{ t: T.tap, s: "tap" }, { t: T.paid, s: "ding" }, { t: T.freeze, s: "freeze" }]; seek(0); return { ok: true }; })();
+  // clear any city building the camera or the message flies through (2.5 m margin)
+  { const pts = []; for (let t = 0; t <= DUR; t += .05) { const c = track(CAMK, t); pts.push([c.px, c.py, c.pz]); const p = track(TOKK, t); pts.push([p.x, p.y, p.z]); }
+    S.children.filter(o => o.userData.city).forEach(b => { const { w, h, d } = b.userData.city, m = 2.5;
+      if (pts.some(([x, y, z]) => Math.abs(x - b.position.x) < w / 2 + m && y < h + m && Math.abs(z - b.position.z) < d / 2 + m)) b.visible = false; }); }
+  window.seek = seek;
+  window.CUES = [{ t: .1, s: "title" }, { t: T.tap, s: "tap" }, { t: T.paid, s: "ding" }, { t: T.freeze, s: "freeze" }, { t: T.launch, s: "launch" }, { t: 15.1, s: "whoosh" }, { t: T.npci, s: "npci" },
+    { t: 23.4, s: "whoosh" }, { t: T.you, s: "bank_in" }, { t: 25.9, s: "check" }, { t: 26.8, s: "check" }, { t: 28.0, s: "debit" }, { t: T.back, s: "whoosh" }, { t: 33.2, s: "whoosh" }, { t: T.raju, s: "bank_in" },
+    { t: 36.3, s: "check" }, { t: 37.6, s: "credit" }, { t: T.dive, s: "dive" }, { t: T.ding, s: "soundbox" }, { t: T.unfreeze, s: "unfreeze" }, { t: T.twist, s: "twist" }, { t: T.iou, s: "iou" },
+    { t: T.settle, s: "settle" }, { t: T.settle + 2.4, s: "rbi" }, { t: T.payoff, s: "payoff" }, { t: 73.8, s: "trust" }, { t: T.end, s: "end" }];
+  seek(0); return { ok: true }; })();
 </script>
 </body>
 </html>
