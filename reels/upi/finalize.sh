@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# waits for the picture render, then: sound -> master -> HD + preview -> audio QA
+# picture (parallel, text QA) -> sound -> master -> HD + preview -> audio QA
 cd "$(dirname "$0")"
-until grep -q "^EXIT" out/render.log 2>/dev/null; do sleep 30; done
+./par_render.sh > out/render.log 2>&1
 TQA=$(grep -c "TEXT QA PASS" out/render.log)
 python3 audio/mix.py || exit 1
 M=$(ffmpeg -hide_banner -i audio/mix.wav -af loudnorm=I=-14:TP=-1.5:LRA=20:print_format=json -f null - 2>&1 | sed -n '/^{/,/^}/p')

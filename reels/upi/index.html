@@ -397,7 +397,7 @@ function words(id, text, font, size, y, t, t0, t1, opts = {}) {
   g.save(); g.font = font; g.textBaseline = "alphabetic"; g.textAlign = "left"; g.letterSpacing = (opts.ls ?? -1) + "px";
   const parts = text.split(" "), sp = g.measureText(" ").width, ws = parts.map(p => g.measureText(p).width), tw = ws.reduce((a, b) => a + b, 0) + sp * (parts.length - 1);
   const cx = opts.x ?? 540; let x = cx - tw / 2; const y0 = y - size * .78;
-  g.save(); g.filter = `blur(${Math.max(10, size * .12)}px)`; g.fillStyle = "rgba(8,6,20,1)"; g.globalAlpha = .85 * (1 - out) * eo(prog(t, t0, t0 + .4)); for (let k = 0; k < 4; k++) g.fillText(text, x, y); g.restore();
+  g.save(); g.filter = `blur(${Math.max(12, size * .15)}px)`; g.fillStyle = "rgba(6,4,16,1)"; g.globalAlpha = .95 * (1 - out) * eo(prog(t, t0, t0 + .4)); for (let k = 0; k < 5; k++) g.fillText(text, x, y); g.restore();
   const contrast = contrastUnder(x, y0, tw, size);
   parts.forEach((p, i) => { const k = prog(t, t0 + i * st, t0 + i * st + .35), s = lerp(.6, 1, eob(k));
     g.save(); g.globalAlpha = clamp(k * 2) * (1 - out); g.fillStyle = (opts.accent && opts.accent.includes(i)) ? "#7ae0ff" : (opts.color || "#fff"); g.font = (opts.serifWords && opts.serifWords.includes(i)) ? F.serif(size * 1.1) : font;
@@ -417,7 +417,7 @@ function hud(t) { // time-freeze clock: the real 2 seconds, in slow motion
 // ledger card: what the bank actually does (lines tick in)
 function card(id, t, t0, t1, title, color, lines) {
   const a = win(t, t0, t1, .45, .35); if (a <= 0) return;
-  const w = 820, lh = 92, h = 130 + lines.length * lh, x = 130, y = 1360 - h + (1 - eob(clamp((t - t0) / .5))) * 80;
+  const w = 820, lh = 92, h = 130 + lines.length * lh, x = 130, y = 1360 - h - (1 - eo(clamp((t - t0) / .5))) * 70;
   g.save(); g.globalAlpha = a; g.shadowColor = "rgba(0,0,0,.45)"; g.shadowBlur = 50; g.shadowOffsetY = 20; g.fillStyle = "rgba(255,255,255,.97)"; g.beginPath(); g.roundRect(x, y, w, h, 36); g.fill(); g.shadowColor = "transparent";
   g.fillStyle = color; g.beginPath(); g.roundRect(x, y, w, 96, [36, 36, 0, 0]); g.fill();
   g.fillStyle = "#fff"; g.font = F.body(44, 800); g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(title, x + 44, y + 50);
@@ -436,20 +436,20 @@ function pinned(id, text, t, t0, t1, world, color = "#46ff9a") { // a pill pinne
   BOXES.push({ id, x, y, w: tw, h: 90, a, read: a, contrast: 15, size: 46 });
 }
 function title(t) { // "UPI, explained" lockup in the first seconds
-  const a = win(t, .1, 1.95, .35, .35); if (a <= 0) return;
+  const a = win(t, .1, 2.4, .35, .35); if (a <= 0) return;
   g.save(); g.globalAlpha = a; g.textAlign = "center"; g.textBaseline = "alphabetic";
-  g.save(); g.filter = "blur(16px)"; g.fillStyle = "rgba(8,6,20,.9)"; g.font = F.disp(170); for (let k = 0; k < 3; k++) g.fillText("UPI", 540, 440); g.font = F.serif(104); g.fillText("explained", 560, 540); g.restore();
+  g.save(); g.filter = "blur(18px)"; g.fillStyle = "rgba(6,4,16,1)"; g.font = F.disp(170); for (let k = 0; k < 3; k++) g.fillText("UPI", 540, 440); g.font = F.serif(104); g.fillText("explained", 560, 540); g.restore();
+  const cA = contrastUnder(380, 310, 320, 140);   // measured after the glow, before the letters
   const k = eob(clamp((t - .1) / .5)); g.save(); g.translate(540, 380); g.scale(lerp(.7, 1, k), lerp(.7, 1, k)); g.translate(-540, -380); g.fillStyle = "#fff"; g.font = F.disp(170); g.letterSpacing = "-5px"; g.fillText("UPI", 540, 440); g.restore();
   const k2 = eio(prog(t, .45, 1.0)); g.save(); g.beginPath(); g.rect(330, 450, 460 * k2, 130); g.clip(); g.fillStyle = "#7ae0ff"; g.font = F.serif(104); g.fillText("explained", 560, 540); g.restore();
   g.restore();
-  const cA = contrastUnder(380, 310, 320, 140);
-  BOXES.push({ id: "title", group: "title", words: 2, x: 340, y: 300, w: 440, h: 270, a, read: t > 1.0 && t < 1.6 ? 1 : 0, contrast: cA, size: 104 });
+  BOXES.push({ id: "title", group: "title", words: 2, x: 340, y: 300, w: 440, h: 270, a, read: t > 1.0 && t < 2.05 ? 1 : 0, contrast: cA, size: 104 });
 }
 function endCard(t) {
   const k = eo(prog(t, T.end, T.end + .6)); if (k <= 0) return;
   g.fillStyle = `rgba(7,10,22,${k * .82})`; g.fillRect(0, 0, W, H);
   words("e1", "@zbacktrack", F.disp(110), 110, 930, t, T.end + .3, DUR + 1, { stagger: 0 });
-  words("e2", "Follow for more, explained.", F.body(46, 600), 46, 1040, t, T.end + .7, DUR + 1, { stagger: .06 });
+  words("e2", "Follow for more, explained.", F.body(46, 600), 46, 1040, t, T.end + .4, DUR + 1, { stagger: .04 });
 }
 
 function seek(t) {
@@ -463,8 +463,8 @@ function seek(t) {
   if (fz > .01) { g.fillStyle = `rgba(40,80,170,${.14 * fz})`; g.fillRect(0, 0, W, H); }
   for (const [t0, col] of [[T.freeze, "190,230,255"], [T.unfreeze, "255,236,180"]]) { const rk = prog(t, t0, t0 + .9); if (rk > 0 && rk < 1) { g.strokeStyle = `rgba(${col},${.6 * (1 - rk)})`; g.lineWidth = 10 * (1 - rk) + 2; g.beginPath(); g.arc(540, 980, rk * 1300, 0, 6.283); g.stroke(); } }
   // soft top gradient behind captions (fades with them)
-  { const capA = Math.max(...[[T.paid + .15, T.pull + .15], [T.pull + 1.15, T.freeze - .05], [T.freeze + .35, 11.9], [12.4, 40.6], [T.ding + 2.7, T.payoff - .1], [T.payoff + .5, T.end]].map(([a, b]) => win(t, a, b, .4, .4)));
-    if (capA > .01) { const gr = g.createLinearGradient(0, 0, 0, 840); gr.addColorStop(0, `rgba(6,8,18,${.55 * capA})`); gr.addColorStop(.45, `rgba(6,8,18,${.5 * capA})`); gr.addColorStop(1, "rgba(6,8,18,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 840); } }
+  { const capA = Math.max(...[[T.paid + .15, T.pull + .15], [T.pull + 1.15, T.freeze - .05], [T.freeze + .35, 11.9], [12.4, 40.6], [T.ding + 2.0, T.payoff + .45], [T.payoff + .55, T.end]].map(([a, b]) => win(t, a, b, .4, .4)));
+    if (capA > .01) { const gr = g.createLinearGradient(0, 0, 0, 1000); gr.addColorStop(0, `rgba(6,8,18,${.72 * capA})`); gr.addColorStop(.55, `rgba(6,8,18,${.64 * capA})`); gr.addColorStop(1, "rgba(6,8,18,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 1000); } }
   // ---- the story, one line at a time ----
   title(t);
   words("t2", "That took 2 seconds.", F.disp(92), 92, 400, t, T.paid + .15, T.pull + .15, { stagger: .07 });
@@ -473,25 +473,25 @@ function seek(t) {
   words("c1", "Your ₹10 leaves as a message.", F.body(72), 72, 520, t, 12.4, 15.4, { stagger: .08, accent: [1] });
   words("c2", "First stop: NPCI.", F.disp(96), 96, 520, t, 15.7, 18.4, { stagger: .12, accent: [2] });
   words("c3", "Every UPI payment in India passes through it.", F.body(64), 64, 520, t, 18.7, 22.9, { stagger: .07 });
-  words("c4", "Next: your bank.", F.disp(92), 92, 520, t, 23.0, 25.3, { stagger: .12 });
+  words("c4", "Next: your bank.", F.disp(92), 92, 520, t, 22.7, 25.3, { stagger: .12 });
   card("k1", t, 25.4, 31.0, "YOUR BANK", "#2b5fb8", [{ t: 25.9, l: "Is it really you?", r: "PIN ✓" }, { t: 26.8, l: "Do you have ₹10?", r: "Yes ✓" },
     { t: 27.8, l: "Your balance", r: tt => "₹" + Math.round(lerp(1250, 1240, eio(prog(tt, 28.0, 28.8)))).toLocaleString("en-IN"), c: "#1b2233" }]);
   words("c5", "It takes ₹10 from you.", F.body(72), 72, 520, t, 27.9, 31.0, { stagger: .08 });
-  words("c6", "Back through NPCI…", F.body(72), 72, 520, t, 31.3, 33.9, { stagger: .09 });
-  words("c7", "…to Raju's bank.", F.disp(92), 92, 520, t, 34.0, 36.2, { stagger: .1 });
+  words("c6", "Back through NPCI…", F.body(72), 72, 520, t, 31.3, 33.65, { stagger: .09 });
+  words("c7", "…to Raju's bank.", F.disp(92), 92, 520, t, 33.7, 36.2, { stagger: .1 });
   card("k2", t, 35.8, 40.6, "RAJU'S BANK", "#c8642a", [{ t: 36.3, l: "Is raju@upi real?", r: "Yes ✓" },
     { t: 37.3, l: "Raju's balance", r: tt => "₹" + Math.round(lerp(3420, 3430, eio(prog(tt, 37.6, 38.4)))).toLocaleString("en-IN"), c: "#1b2233" }]);
   words("c8", "It adds ₹10 for Raju.", F.body(72), 72, 520, t, 37.5, 40.6, { stagger: .08 });
-  pinned("sb", "₹10 received", t, T.ding + .05, T.ding + 2.6, new THREE.Vector3(.98, 1.35, .22));
-  words("c9", "2 seconds. Done.", F.disp(100), 100, 540, t, T.ding + 2.7, T.twist - .1, { stagger: .14 });
+  pinned("sb", "₹10 received", t, T.ding + .05, T.ding + 1.9, new THREE.Vector3(.98, 1.35, .22));
+  words("c9", "2 seconds. Done.", F.disp(100), 100, 540, t, T.ding + 2.0, T.twist - .05, { stagger: .08 });
   words("c10", "But here's the twist…", F.body(78), 78, 520, t, T.twist + .2, 51.0, { stagger: .1 });
   words("c11", "Your bank hasn't paid Raju's bank.", F.body(68), 68, 520, t, 51.2, 54.6, { stagger: .08 });
-  words("c12", "Not a single rupee. Yet.", F.disp(92), 92, 520, t, 54.8, 57.1, { stagger: .1 });
+  words("c12", "Not a single rupee. Yet.", F.disp(78), 78, 520, t, 54.8, 57.25, { stagger: .1 });
   words("c13", "Raju's bank paid him from its own money…", F.body(62), 62, 520, t, 57.4, 61.1, { stagger: .07 });
   words("c14", "…trusting your bank to pay later.", F.body(66), 66, 520, t, 61.3, 64.5, { stagger: .08 });
-  words("c15", "Later, banks settle up in bulk.", F.body(70), 70, 520, t, T.settle + .2, 67.6, { stagger: .08 });
-  words("c16", "Through the RBI.", F.disp(96), 96, 520, t, 67.8, T.payoff - .1, { stagger: .12 });
-  words("c17", "UPI doesn't move money.", F.body(76), 76, 500, t, T.payoff + .5, 73.6, { stagger: .1 });
+  words("c15", "Later, banks settle up in bulk.", F.body(70), 70, 520, t, T.settle + .2, 67.7, { stagger: .05 });
+  words("c16", "Through the RBI.", F.disp(96), 96, 520, t, 67.8, T.payoff + .45, { stagger: .1 });
+  words("c17", "UPI doesn't move money.", F.body(76), 76, 500, t, T.payoff + .55, 73.6, { stagger: .1 });
   words("c18", "It moves trust.", F.disp(130), 130, 560, t, 73.8, T.end - .05, { stagger: .14, serifWords: [2] });
   hud(t);
   endCard(t);

@@ -23,7 +23,7 @@ def chime(notes, t0, gain, dt=.11, dur=1.4):
 for c in cues:
     t0, s = c["t"], c["s"]
     if s == "title":   chime([587.33, 880.0], t0 + .15, db(-24), dt=.18, dur=2.0)
-    elif s == "tap":   place(fx, click, t0 - peak_at_start(click), db(-12))
+    elif s == "tap":   place(fx, click, t0 - peak_at_start(click), db(-4)); place(fx, filt(np.stack([rng.standard_normal(int(.03 * SR))] * 2, 1) * env(.03, .001, .025)[:, None], 1500, 9000), t0 - .002, db(-14))
     elif s == "ding":  chime([1046.5, 1568.0], t0, db(-15))
     elif s == "freeze":
         place(fx, reverse_swell(.9), t0 - .9, db(-16)); place(fx, sub_drop(1.4, 90, 38), t0, db(-10))
@@ -44,7 +44,7 @@ for c in cues:
         bz = np.sign(np.sin(2 * np.pi * 220 * tt(.9))) * .15; place(fx, filt(np.stack([bz, bz], 1) * env(.9, .05, .3)[:, None], 400, 3000), t0 + .5, db(-26))
     elif s == "unfreeze":
         place(fx, reverse_swell(.6)[::-1] * env(.6, .02, .4)[:, None], t0, db(-18)); place(fx, whoosh(.9, 2000, 300), t0, db(-16))
-    elif s == "twist":  place(fx, lowexp, t0 - peak_at_start(lowexp), db(-13)); place(fx, sub_drop(2.0, 60, 30), t0, db(-12))
+    elif s == "twist":  place(fx, lowexp, t0 - peak_at_start(lowexp), db(-6)); place(fx, sub_drop(2.0, 60, 30), t0, db(-6)); place(fx, soft, t0 - peak_at_start(soft), db(-10))
     elif s == "iou":    place(fx, sweep_noise(1.0, 3000, 1200, q=1.5) * env(1.0, .2, .6)[:, None], t0 + .2, db(-20))
     elif s == "settle": place(fx, sweep_noise(2.6, 400, 7000, q=1.7, curve=2) * np.linspace(0, 1, int(2.6 * SR))[:, None] ** 2, t0 + .1, db(-18))
     elif s == "rbi":    bi = braam(2.8, 36.71 * 1.5); place(fx, bi, t0, db(-9)); place(fx, metal, t0 - peak_at_start(metal), db(-16))
@@ -84,7 +84,7 @@ place(mus, pad(DUR - T["rbi"] + .5, [D2, A2, Fs2 * 2, D2 * 2], bright=1500, a=1.
 # dead stops before the big moments
 def dip(t0, pre=.18, floor=-40, fade=.04):
     gg = np.ones(N); a, b = at(t0 - pre), at(t0); f = int(fade * SR); gg[a:b] = db(floor); gg[a - f:a] = np.linspace(1, db(floor), f); return gg
-gd = dip(T["soundbox"]) * dip(T["rbi"], .14)
+gd = dip(T["soundbox"]) * dip(T["rbi"], .14) * dip(T["twist"], .15, -30) * dip(T["tap"], .08, -14, .02)
 fx = reverb(fx, 1.6, .2, 7000); mus = reverb(mus, 2.6, .3, 5000)
 mus *= gd[:, None]; amb *= gd[:, None]; fx *= gd[:, None]
 mix = fx + mus + amb

@@ -54,12 +54,12 @@ if (mode === "qa") {   // every frame's text checks, no video encode
   const dir = path.join(here, "out/stills"); mkdirSync(dir, { recursive: true });
   for (const s of rest) writeFileSync(path.join(dir, `t_${s}.png`), await grab(+s));
 } else {
-  FPS = +(rest[0] || 30); const fps = FPS, dur = +(process.env.END || await page.evaluate(() => window.DUR)), n = Math.round(dur * fps);
+  FPS = +(rest[0] || 30); const fps = FPS, dur = +(process.env.END || await page.evaluate(() => window.DUR)), n = Math.round(dur * fps), i0 = Math.round(+(process.env.START || 0) * fps);
   mkdirSync(path.join(here, "out"), { recursive: true });
   const ff = spawn("ffmpeg", ["-y", "-v", "error", "-f", "image2pipe", "-framerate", String(fps), "-i", "-",
     "-c:v", "libx264", "-preset", "slow", "-crf", "14", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-    path.join(here, "out/picture.mp4")], { stdio: ["pipe", "inherit", "inherit"] });
-  for (let i = 0; i < n; i++) {
+    path.join(here, process.env.OUT || "out/picture.mp4")], { stdio: ["pipe", "inherit", "inherit"] });
+  for (let i = i0; i < n; i++) {
     const buf = await grab(i / fps);
     if (!ff.stdin.write(buf)) await new Promise(r => ff.stdin.once("drain", r));
     if (i % 60 === 0) console.log(`frame ${i}/${n}`);
@@ -68,8 +68,8 @@ if (mode === "qa") {   // every frame's text checks, no video encode
   console.log("wrote out/picture.mp4");
 }
 // reading time: every phrase must be fully readable (a > 0.6) for at least 0.6 s + 0.3 s per word
-if (mode !== "stills") for (const [id, v] of Object.entries(SEEN)) { const need = .6 + .3 * v.words, got = v.frames / FPS; if (got + 1e-6 < need) fails.push({ kind: "too-short-to-read", id, seconds: +got.toFixed(2), need: +need.toFixed(2) }); }
-writeFileSync(path.join(here, "out/text-qa.json"), JSON.stringify({ fails: fails.length, first: fails.slice(0, 20), all: fails }, null, 1));
+if (mode !== "stills" && !process.env.SEGMENT) for (const [id, v] of Object.entries(SEEN)) { const need = .6 + .3 * v.words, got = v.frames / FPS; if (got + 1e-6 < need) fails.push({ kind: "too-short-to-read", id, seconds: +got.toFixed(2), need: +need.toFixed(2) }); }
+writeFileSync(path.join(here, process.env.QAOUT || "out/text-qa.json"), JSON.stringify({ fails: fails.length, first: fails.slice(0, 20), all: fails, seen: SEEN, fps: FPS }, null, 1));
 console.log(fails.length ? `TEXT QA FAIL: ${fails.length} problems (see out/text-qa.json)` : "TEXT QA PASS: no overlaps, all text inside safe zone");
 await browser.close();
 process.exit(fails.length ? 1 : 0);
