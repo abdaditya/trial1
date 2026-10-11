@@ -11,13 +11,18 @@ canvas { display: block; }
 <body><canvas id="c" width="1080" height="1920"></canvas>
 <script src="lib/three.min.js"></script>
 <script src="audio/words.js"></script>
+<script src="audio/words3.js"></script>
 <script>
 // "Why India can't move its solar power" — voiced reel, 1080x1920, deterministic: window.seek(t) draws frame t.
 // Scenes draw onto `g` (swapped to an off-screen buffer during transitions); captions go on top of everything.
 const W = 1080, H = 1920;
-// voice edit: "and Khavda in Kutch" removed (orig 15.42-16.38), 0.25 s room tone kept after "Gujarat" -> 0.73 s shorter
-const CUT0 = 15.41, CUTD = .73, DUR = 92 - CUTD;
-const toOrig = t => t < CUT0 ? t : t + CUTD, toEdit = t => t < CUT0 ? t : t - CUTD;
+// voice v3 (new intro take + requested pauses): every matched word is an anchor [new time, authored time]
+const ANCH = window.ANCH, DUR = 88.82;
+function amap(t, a, b) { const A = ANCH; if (t <= A[0][a]) return t - A[0][a] + A[0][b]; const L = A[A.length - 1]; if (t >= L[a]) return t - L[a] + L[b];
+  let lo = 0, hi = A.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m][a] <= t) lo = m; else hi = m; }
+  return A[lo][b] + (A[hi][b] - A[lo][b]) * (t - A[lo][a]) / (A[hi][a] - A[lo][a]); }
+const toOrig = t => amap(t, 0, 1), toEdit = t => amap(t, 1, 0);
+const W3 = window.WORDS3, ns = i => toOrig(W3[i][1]);   // a new-take word's time on the authored clock
 const SAFE = { x0: 90, x1: 950, y0: 250, y1: 1540 }, CX = 520;   // playbook danger zones; text centres on x 520
 const MAIN = document.getElementById("c"), gm = MAIN.getContext("2d", { willReadFrequently: true });
 let g = gm;
@@ -80,9 +85,10 @@ function tokens(i0, i1) { const out = []; for (let i = i0; i <= i1; i++) { const
 const key = w => w.toLowerCase().replace(/[^a-z0-9%.,-]/g, "").replace(/[.,]$/, "");
 // one caption: words appear as spoken, wrapped into balanced lines
 function caption(t, c) {
-  const { id, i0, i1, t1, y = 430, size = 64, ink = false, st = {}, center = false } = c, t0 = ws(i0) - .05;
+  const { id, i0, i1, t1, y = 430, size = 64, ink = false, st = {}, center = false } = c, t0 = (c.n0 !== undefined ? ns(c.n0) : ws(i0)) - .05;
   if (t < t0 || t > t1) return;
-  const out = eio(prog(t, t1 - .28, t1)), toks = tokens(i0, i1).map(([w, tt]) => [w, tt, st[key(w)] || {}]);
+  const raw = c.n0 !== undefined ? W3.slice(c.n0, c.n1 + 1).map(([w], k) => [(c.txt || {})[c.n0 + k] || w, ns(c.n0 + k)]) : tokens(i0, i1);
+  const out = eio(prog(t, t1 - .28, t1)), toks = raw.map(([w, tt]) => [w, tt, st[key(w)] || {}]);
   const fontOf = s => `${s.it ? "italic " : ""}800 ${size}px Playfair`, sp = size * .26, maxW = 800;
   g = gm; g.save();
   const wid = toks.map(([w, , s]) => { g.font = fontOf(s); return g.measureText(w).width; });
@@ -177,10 +183,10 @@ function earthCam(lat, lon, d, offY = -160) { CAM.fov = 35; CAM.position.copy(ll
 function earthFrame(t) {
   let cam, night = 0, hotA = 0, hotPulse = 0, colA = 0, arcK = [0, 0], finale = t > 80;
   if (!finale) {
-    cam = track([[10.9, [25.6, 71.0, 1.9]], [11.2, [25.6, 71.0, 1.9]], [12.3, [21, 78, 3.6]], [12.6, [21, 78, 3.6]], [14.3, [24.6, 72.3, 1.6]], [15.41, [24.55, 72.4, 1.58]], [16.14, [24.55, 72.4, 1.58]], [19.6, [24.3, 72.9, 1.52]], [21.9, [21.5, 78.5, 2.35]], [25.4, [21.3, 79.2, 2.3]]], t);
+    cam = track([[10.6, [25.6, 71.0, 1.9]], [11.6, [25.6, 71.0, 1.9]], [12.9, [21, 78, 3.6]], [13.15, [21, 78, 3.6]], [14.45, [24.6, 72.3, 1.6]], [19.6, [24.3, 72.9, 1.52]], [21.9, [21.5, 78.5, 2.35]], [25.4, [21.3, 79.2, 2.3]]], t);
     night = eio(prog(t, 20.4, 21.8)); hotA = 1; hotPulse = Math.max(prog(t, ws(44), ws(45) + .5), prog(t, 18.8, 19.5)); colA = eo(prog(t, 22.6, 23.6)); arcK = [prog(t, 24.1, 24.9), 0];
   } else {
-    cam = track([[83.6, [23.4, 76.5, 2.5]], [88.6, [22.8, 77.5, 2.1]]], t); night = .85; hotA = 1; hotPulse = prog(t, 84.7, 85.5); colA = 1; arcK = [0, prog(t, 86.1, 88.6)];
+    cam = track([[83.6, [23.4, 76.5, 2.5]], [89.2, [22.8, 77.5, 2.05]]], t); night = .85; hotA = 1; hotPulse = prog(t, 84.7, 85.5); colA = 1; arcK = [0, prog(t, 86.1, 88.6)];
   }
   earthCam(cam[0], cam[1], cam[2]);
   EARTH_MAT.uniforms.sun.value.copy(ll2v(18, 64)).normalize(); EARTH_MAT.uniforms.nightAmt.value = night; EARTH_MAT.uniforms.dayAmt.value = lerp(1, .55, night);
@@ -298,22 +304,22 @@ function buildDusk() {
   const yard = new THREE.MeshStandardMaterial({ color: 0x8d949b, metalness: .6, roughness: .45 });
   for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8 + (i % 2) * .8, 1.6), yard); b.position.set(-4 + i * 2, .9, -44); b.castShadow = true; DUSK.add(b); }
   const gantry = addPylon(DUSK, 0, -46); gantry.scale.set(.8, .7, .8);
-  const towers = [-58, -72, -86, -100].map(z => addPylon(DUSK, 0, z)); DLAST = towers[3];
+  const towers = [-58, -72, -86].map(z => addPylon(DUSK, 0, z)); DLAST = towers[2];
   const chain = [gantry, ...towers];
   for (let i = 0; i < chain.length - 1; i++) for (let a = 0; a < 4; a++) { const c = sagCurve(att(chain[i], a), att(chain[i + 1], a), 1.1); DWIRES.push({ mesh: wire(DUSK, c), curve: c, seg: i }); }
-  for (let a = 0; a < 4; a++) { const p0 = att(DLAST, a), p1 = new THREE.Vector3(p0.x * .8, .05, -110 - a * .6), mid = p0.clone().lerp(p1, .5); mid.y = p0.y * .25;   // cut wires hang to the sand
-    const c = new THREE.CatmullRomCurve3([p0, mid, p1]); DWIRES.push({ mesh: wire(DUSK, c), curve: c, seg: 4 }); }
+  for (let a = 0; a < 4; a++) { const p0 = att(DLAST, a), p1 = new THREE.Vector3(p0.x * .8, .05, -96 - a * .6), mid = p0.clone().lerp(p1, .5); mid.y = p0.y * .25;   // cut wires hang to the sand
+    const c = new THREE.CatmullRomCurve3([p0, mid, p1]); DWIRES.push({ mesh: wire(DUSK, c), curve: c, seg: 3 }); }
   for (let i = 0; i < 28; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GOLD, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); DUSK.add(s); DPULSE2.push(s); }
   DSPARK2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: REDG, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); DUSK.add(DSPARK2);
 }
 function duskFrame(t) {
   const T_SEND = ws(11), T_ANY = ws(14);
-  const cam = track([[2.85, [.12, 1.72, .62, 0, 1.0, -.22, 0]], [3.55, [3.5, 6.0, 8.5, 0, .8, -8, .12]], [T_SEND + .1, [12, 11, -22, 0, 5, -70, .18]], [T_ANY, [9, 8.5, -78, 0, 5.5, -101, .07]], [5.75, [8.2, 7.6, -86, 0, 5.0, -104, .04]]], t);
+  const cam = track([[2.6, [15, 10.5, -36, -1, 5, -60, .08]], [T_ANY + .2, [11.5, 8.6, -62, 0, 5.4, -86, .05]], [5.9, [10.4, 8.0, -67, 0, 5.2, -88, .03]]], t);
   CAM.fov = 42; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -150, W, H); CAM.position.set(cam[0], cam[1], cam[2]); CAM.up.set(Math.sin(cam[6]), Math.cos(cam[6]), 0); CAM.lookAt(cam[3], cam[4], cam[5]); CAM.updateProjectionMatrix();
-  DPANMAT.emissiveIntensity = .9 * eo(prog(t, 2.9, 3.5));
-  const die = prog(t, T_ANY + .05, T_ANY + .8), wireCurves = DWIRES.filter(w => w.seg < 4);
-  DPULSE2.forEach((s, i) => { const w = wireCurves[i % wireCurves.length], seg = w.seg, start = T_SEND - .1 + seg * .14 + (i / DPULSE2.length) * .12, u = clamp((Math.min(t, T_ANY + .1) - start) * 3.2);
-    s.visible = u > 0 && u < 1 || (seg === 3 && u >= 1); s.position.copy(w.curve.getPoint(Math.min(u, 1))); s.material.color.set(die > 0 ? 0xff5a3c : 0xffffff); s.material.opacity = 1 - die * .9; s.scale.setScalar(seg === 3 && u >= 1 ? .9 + .3 * Math.sin(t * 40 + i) : .7); });
+  DPANMAT.emissiveIntensity = .9;
+  const die = prog(t, T_ANY + .05, T_ANY + .8), wireCurves = DWIRES.filter(w => w.seg < 3);
+  DPULSE2.forEach((s, i) => { const w = wireCurves[i % wireCurves.length], seg = w.seg, start = 2.75 + seg * .3 + (i / DPULSE2.length) * .25, u = clamp((Math.min(t, T_ANY + .1) - start) * 1.6);
+    s.visible = u > 0 && u < 1 || (seg === 2 && u >= 1); s.position.copy(w.curve.getPoint(Math.min(u, 1))); s.material.color.set(die > 0 ? 0xff5a3c : 0xffffff); s.material.opacity = 1 - die * .9; s.scale.setScalar(seg === 2 && u >= 1 ? .9 + .3 * Math.sin(t * 40 + i) : .7); });
   const sk = prog(t, T_ANY - .05, T_ANY + .1) * (1 - prog(t, T_ANY + .5, T_ANY + 1.2)); DSPARK2.position.copy(att(DLAST, 1)); DSPARK2.material.opacity = sk * (Math.sin(t * 70) > 0 ? 1 : .45); DSPARK2.scale.setScalar(1.2 + 2.5 * sk);
   draw3D(DUSK, 0x1d2a4a);
   const gr = g.createLinearGradient(0, 0, 0, 900); gr.addColorStop(0, "rgba(10,9,16,.72)"); gr.addColorStop(1, "rgba(10,9,16,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 900);
@@ -561,7 +567,7 @@ function sRows(t) {
 function panelTile(x, y, w, h, glow) { g.fillStyle = glow > 0 ? `rgb(${lerp(38, 255, glow * .85) | 0},${lerp(70, 196, glow * .85) | 0},${lerp(140, 92, glow) | 0})` : "#26468c"; g.fillRect(x, y, w, h); g.fillStyle = "rgba(255,255,255,.22)"; g.fillRect(x, y + h / 2 - 1, w, 2); g.fillRect(x + w / 3, y, 2, h); g.fillRect(x + 2 * w / 3, y, 2, h); }
 function sTiles(t) {
   darkBg(.6); const T0 = ws(17), T1 = ws(18) + .1, cols = 18, tw = 34, th = 24, gp = 5, bw = cols * (tw + gp) - gp, bh = 9 * (th + gp) - gp;
-  const push = lerp(1, 1.07, eio(prog(t, 5.2, 10.4))), shrink = eio(prog(t, 10.45, 11.1));
+  const push = lerp(1, 1.07, eio(prog(t, 5.2, 10.2))), shrink = eio(prog(t, 10.25, 11.1));
   g.save(); g.translate(CX, 1080); g.scale(push * lerp(1, .02, shrink), push * lerp(1, .02, shrink)); g.translate(-CX, -1080);
   const bx = CX - bw / 2, by = 1080 - bh / 2, wave = prog(t, ws(24) - .1, ws(24) + .6), hit = ws(32) + .02, bump = prog(t, hit, hit + .5);
   for (let i = 0; i < 162; i++) { const k = eob(prog(t, T0 + i * (T1 - T0) / 162, T0 + i * (T1 - T0) / 162 + .25)); if (k <= 0) continue; const c = i % cols, r = (i / cols) | 0, x = bx + c * (tw + gp), y = by + r * (th + gp);
@@ -659,9 +665,10 @@ function sDonut(t) {
   // legend
   const ly = gy + 10 * (th + gp) + 40, la = prog(t, ws(219), ws(220) + .3); g.globalAlpha = k * la;
   g.fillStyle = "#F08C32"; g.fillRect(gx, ly, 34, 26); g.font = "700 36px Inter"; g.letterSpacing = "2px"; g.fillStyle = "#2a2420"; g.fillText("TEMPORARY LINKS", gx + 50, ly + 25);
-  g.globalAlpha = k; stamp(CW / 2 - 190, -CH / 2 + 205, "TGNA", prog(t, ws(225) - .08, ws(225) + .3), "#C0392B", 70, -9);
   close(); g.restore();
   regEl("card", CX - CW / 2, TOP, CW, CH, t > 73.58 ? k : 0);
+  const ta = prog(t, ws(225) - .06, ws(225) + .25), tk = eob(ta); if (ta > 0) { g.save(); g.globalAlpha = clamp(ta * 2); g.translate(CX, 470); g.scale(lerp(.8, 1, tk), lerp(.8, 1, tk));
+    g.font = "600 120px Oswald"; g.letterSpacing = "14px"; g.textAlign = "center"; g.fillStyle = "#C0392B"; g.fillText("TGNA", 7, 0); g.restore(); reg("tgna", CX - 190, 470 - 112, 380, 118, clamp(ta * 2), 120, 9); }
 }
 // S14 — noon: about half held back (same paper world)
 function sNoon(t) {
@@ -702,7 +709,7 @@ const SC = [
   { id: "rows", t0: 0, t1: 3.2, f: sRows },
   { id: "dusk", t0: 2.85, t1: 5.65, f: duskFrame, tr: "push" },
   { id: "tiles", t0: 5.2, t1: 11.3, f: sTiles, tr: "push" },
-  { id: "earth", t0: 10.85, t1: 25.7, f: t => { earthFrame(t); earthOverlay(t); }, tr: "fade" },
+  { id: "earth", t0: 10.75, t1: 25.7, f: t => { earthFrame(t); earthOverlay(t); }, tr: "fade" },
   { id: "dam", t0: 25.2, t1: 33.3, f: museumFrame, tr: "push" },
   { id: "pylon", t0: 32.8, t1: 36.6, f: transFrame, tr: "push" },
   { id: "time", t0: 36.1, t1: 41.9, f: sTimeline, tr: "whipL" },
@@ -713,15 +720,14 @@ const SC = [
   { id: "q2", t0: 70.9, t1: 73.6, f: t => sQuestion(t, false), tr: "fade" },
   { id: "donut", t0: 73.15, t1: 78.65, f: sDonut, tr: "push" },
   { id: "noon", t0: 78.15, t1: 84.05, f: sNoon, tr: "whipL" },
-  { id: "earth2", t0: 83.55, t1: 89.2, f: t => { earthFrame(t); earthOverlay(t); }, tr: "pull" },
-  { id: "end", t0: 88.7, t1: 92.01, f: sEnd, tr: "fade" },
+  { id: "earth2", t0: 83.55, t1: 99, f: t => { earthFrame(t); earthOverlay(t); }, tr: "pull" },
 ];
 const CAPS = [
-  { id: "c0", i0: 0, i1: 8, t1: 3.0, size: 66, st: { faster: { hl: "lav" } } },
-  { id: "c1", i0: 9, i1: 14, t1: 5.35, size: 80, st: { anywhere: { it: 1, hl: "or" } } },
+  { id: "c0", n0: 0, n1: 8, txt: { 8: "expected," }, t1: 3.0, size: 66, st: { faster: { hl: "lav" } } },
+  { id: "c1", n0: 9, n1: 16, t1: 5.4, size: 76, st: { stuck: { it: 1, hl: "or" } } },
   { id: "c4", i0: 25, i1: 32, t1: 10.8, st: { move: { hl: "lav" } } },
-  { id: "c6", i0: 38, i1: 45, t1: 14.5, st: { one: { it: 1, hl: "or" }, place: { it: 1, hl: "or" } } },
-  { id: "c7", i0: 52, i1: 54, t1: 19.9, size: 72, st: { sun: { it: 1, hl: "or" } } },
+  { id: "c6", n0: 35, n1: 42, txt: { 42: "region." }, t1: 14.5, st: { one: { it: 1, hl: "or" }, region: { it: 1, hl: "or" } } },
+  { id: "c7", n0: 45, n1: 50, txt: { 46: "sun,", 50: "power." }, t1: 20.0, size: 66, st: { sun: { it: 1, hl: "or" } } },
   { id: "c8", i0: 59, i1: 66, t1: 23.3, st: { not: { it: 1, hl: "or" } } },
   { id: "c11", i0: 87, i1: 93, t1: 31.1, st: { pipeline: { it: 1, hl: "or" } } },
   { id: "c13", i0: 103, i1: 109, t1: ws(110) - .08, size: 70, st: { transmission: { hl: "lav" } } },
@@ -731,9 +737,9 @@ const CAPS = [
   { id: "c21", i0: 168, i1: 171, t1: 58.7, size: 86, st: { stop: { it: 1, hl: "red" } } },
   { id: "q2", i0: 210, i1: 214, t1: 73.55, center: true, y: 960, size: 96, st: { "managing?": { it: 1, hl: "or" } } },
   { id: "c28", i0: 244, i1: 250, t1: ws(251) - .1, st: { fast: { it: 1, hl: "or" } } },
-  { id: "c29", i0: 251, i1: 260, t1: 88.85, st: { catching: { hl: "lav" }, "up": { hl: "lav" } } },
+  { id: "c29", i0: 251, i1: 260, t1: 99, st: { catching: { hl: "lav" }, "up": { hl: "lav" } } },
 ];
-const KICKS = [[0, 3.0, "BHADLA SOLAR PARK · RAJASTHAN"], [ws(70) - .05, 25.3, "CITIES · FACTORY BELTS"], [25.6, 33.0, "AN ANALOGY"], [33.0, 36.3, "THE PIPELINE FOR ELECTRICITY"], [36.4, 41.6, "TIME TO BUILD", true], [61.5, 71.0, "LAST QUARTER · APRIL TO JUNE"], [73.4, 78.4, "HOW WE ARE MANAGING", true], [78.5, 83.8, "ONE DAY OF SOLAR", true]];
+const KICKS = [[0, 3.0, "BHADLA SOLAR PARK · RAJASTHAN"], [ws(70) - .05, 25.3, "CITIES · FACTORY BELTS"], [25.6, 33.0, "AN ANALOGY"], [33.0, 36.3, "THE PIPELINE FOR ELECTRICITY"], [36.4, 41.6, "TIME TO BUILD", true], [61.5, 71.0, "LAST QUARTER · APRIL TO JUNE"], [73.4, ws(225) - .1, "HOW WE ARE MANAGING", true], [78.5, 83.8, "ONE DAY OF SOLAR", true]];
 
 const BEATS = [
   ["RIGHT-OF-WAY CLEARANCES", ws(128) - .05, ws(133) - .12], ["THOUSANDS OF PLOTS", ws(133) - .05, ws(136) - .12], ["ENVIRONMENTAL APPROVALS", ws(137) - .05, ws(140) - .12], ["WESTERN CORRIDORS", ws(141) - .05, ws(146) - .15],
