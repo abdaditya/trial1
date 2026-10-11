@@ -2,3 +2,4 @@ out/
 *.mp4
 __pycache__/
 audio/mix.wav
+ffmpeg2pass-0.log*

@@ -443,7 +443,7 @@ function title(t) { // "UPI, explained" lockup in the first seconds
   const k = eob(clamp((t - .1) / .5)); g.save(); g.translate(540, 380); g.scale(lerp(.7, 1, k), lerp(.7, 1, k)); g.translate(-540, -380); g.fillStyle = "#fff"; g.font = F.disp(170); g.letterSpacing = "-5px"; g.fillText("UPI", 540, 440); g.restore();
   const k2 = eio(prog(t, .45, 1.0)); g.save(); g.beginPath(); g.rect(330, 450, 460 * k2, 130); g.clip(); g.fillStyle = "#7ae0ff"; g.font = F.serif(104); g.fillText("explained", 560, 540); g.restore();
   g.restore();
-  BOXES.push({ id: "title", group: "title", words: 2, x: 340, y: 300, w: 440, h: 270, a, read: t > 1.0 && t < 2.05 ? 1 : 0, contrast: cA, size: 104 });
+  BOXES.push({ id: "title", group: "title", words: 2, x: 340, y: 300, w: 440, h: 270, a, read: t > 1.0 && t < 2.25 ? 1 : 0, contrast: cA, size: 104 });
 }
 function endCard(t) {
   const k = eo(prog(t, T.end, T.end + .6)); if (k <= 0) return;
@@ -473,7 +473,7 @@ function seek(t) {
   words("c1", "Your ₹10 leaves as a message.", F.body(72), 72, 520, t, 12.4, 15.4, { stagger: .08, accent: [1] });
   words("c2", "First stop: NPCI.", F.disp(96), 96, 520, t, 15.7, 18.4, { stagger: .12, accent: [2] });
   words("c3", "Every UPI payment in India passes through it.", F.body(64), 64, 520, t, 18.7, 22.9, { stagger: .07 });
-  words("c4", "Next: your bank.", F.disp(92), 92, 520, t, 22.7, 25.3, { stagger: .12 });
+  words("c4", "Next: your bank.", F.disp(92), 92, 520, t, 22.95, 25.3, { stagger: .05 });
   card("k1", t, 25.4, 31.0, "YOUR BANK", "#2b5fb8", [{ t: 25.9, l: "Is it really you?", r: "PIN ✓" }, { t: 26.8, l: "Do you have ₹10?", r: "Yes ✓" },
     { t: 27.8, l: "Your balance", r: tt => "₹" + Math.round(lerp(1250, 1240, eio(prog(tt, 28.0, 28.8)))).toLocaleString("en-IN"), c: "#1b2233" }]);
   words("c5", "It takes ₹10 from you.", F.body(72), 72, 520, t, 27.9, 31.0, { stagger: .08 });
@@ -486,7 +486,7 @@ function seek(t) {
   words("c9", "2 seconds. Done.", F.disp(100), 100, 540, t, T.ding + 2.0, T.twist - .05, { stagger: .08 });
   words("c10", "But here's the twist…", F.body(78), 78, 520, t, T.twist + .2, 51.0, { stagger: .1 });
   words("c11", "Your bank hasn't paid Raju's bank.", F.body(68), 68, 520, t, 51.2, 54.6, { stagger: .08 });
-  words("c12", "Not a single rupee. Yet.", F.disp(78), 78, 520, t, 54.8, 57.25, { stagger: .1 });
+  words("c12", "Not a rupee. Yet.", F.disp(92), 92, 520, t, 54.6, 57.35, { stagger: .1 });
   words("c13", "Raju's bank paid him from its own money…", F.body(62), 62, 520, t, 57.4, 61.1, { stagger: .07 });
   words("c14", "…trusting your bank to pay later.", F.body(66), 66, 520, t, 61.3, 64.5, { stagger: .08 });
   words("c15", "Later, banks settle up in bulk.", F.body(70), 70, 520, t, T.settle + .2, 67.7, { stagger: .05 });
