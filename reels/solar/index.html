@@ -17,7 +17,7 @@ canvas { display: block; }
 // Scenes draw onto `g` (swapped to an off-screen buffer during transitions); captions go on top of everything.
 const W = 1080, H = 1920;
 // voice v3 (new intro take + requested pauses): every matched word is an anchor [new time, authored time]
-const ANCH = window.ANCH, DUR = 88.82;
+const ANCH = window.ANCH, DUR = 89.52;
 function amap(t, a, b) { const A = ANCH; if (t <= A[0][a]) return t - A[0][a] + A[0][b]; const L = A[A.length - 1]; if (t >= L[a]) return t - L[a] + L[b];
   let lo = 0, hi = A.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (A[m][a] <= t) lo = m; else hi = m; }
   return A[lo][b] + (A[hi][b] - A[lo][b]) * (t - A[lo][a]) / (A[hi][a] - A[lo][a]); }
@@ -183,7 +183,7 @@ function earthCam(lat, lon, d, offY = -160) { CAM.fov = 35; CAM.position.copy(ll
 function earthFrame(t) {
   let cam, night = 0, hotA = 0, hotPulse = 0, colA = 0, arcK = [0, 0], finale = t > 80;
   if (!finale) {
-    cam = track([[10.6, [25.6, 71.0, 1.9]], [11.6, [25.6, 71.0, 1.9]], [12.9, [21, 78, 3.6]], [13.15, [21, 78, 3.6]], [14.45, [24.6, 72.3, 1.6]], [19.6, [24.3, 72.9, 1.52]], [21.9, [21.5, 78.5, 2.35]], [25.4, [21.3, 79.2, 2.3]]], t);
+    cam = track([[ws(32) + .5, [23.0, 76.0, 2.75]], [ws(38) - .05, [23.4, 75.2, 2.6]], [ws(46) + .1, [24.6, 72.3, 1.65]], [19.6, [24.3, 72.9, 1.52]], [21.9, [21.5, 78.5, 2.35]], [25.4, [21.3, 79.2, 2.3]]], t);
     night = eio(prog(t, 20.4, 21.8)); hotA = 1; hotPulse = Math.max(prog(t, ws(44), ws(45) + .5), prog(t, 18.8, 19.5)); colA = eo(prog(t, 22.6, 23.6)); arcK = [prog(t, 24.1, 24.9), 0];
   } else {
     cam = track([[83.6, [23.4, 76.5, 2.5]], [89.2, [22.8, 77.5, 2.05]]], t); night = .85; hotA = 1; hotPulse = prog(t, 84.7, 85.5); colA = 1; arcK = [0, prog(t, 86.1, 88.6)];
@@ -511,7 +511,7 @@ function sStop(t) {
   if (red > 0) vignette(.5 * red * (1 - prog(t, T_STOP + .8, T_STOP + 2.2)), "170,20,10");
   vignette(.45); shade(.82, 820, .6);
   // the term
-  const ta = win(t, ws(172) - .1, ws(175) + .1, .35, .3); if (ta > 0) { const kk = eob(prog(t, ws(172) - .1, ws(172) + .35)); g.save(); g.globalAlpha = ta; g.translate(CX, 1240); g.scale(lerp(.85, 1, kk), lerp(.85, 1, kk));
+  const ta = win(t, ws(172) - .1, ws(180) + .35, .35, .55); if (ta > 0) { const kk = eob(prog(t, ws(172) - .1, ws(172) + .35)); g.save(); g.globalAlpha = ta; g.translate(CX, 1240); g.scale(lerp(.85, 1, kk), lerp(.85, 1, kk));
     g.fillStyle = "rgba(14,12,20,.9)"; rrect(-380, -130, 760, 260, 18); g.fill(); g.strokeStyle = "#F2B544"; g.lineWidth = 3; g.stroke();
     g.font = "700 34px Inter"; g.letterSpacing = "6px"; g.textAlign = "center"; g.fillStyle = "#F2C46A"; g.fillText("THE WORD FOR IT", 0, -62);
     g.font = "800 96px Playfair"; g.letterSpacing = "0px"; g.fillStyle = "#F5EFE3"; g.fillText("Curtailment", 0, 62); const hk = eio(prog(t, ws(174), ws(174) + .4)); g.fillStyle = "#B7A3F6"; g.fillRect(-250, 84, 500 * hk, 8); g.restore();
@@ -567,7 +567,7 @@ function sRows(t) {
 function panelTile(x, y, w, h, glow) { g.fillStyle = glow > 0 ? `rgb(${lerp(38, 255, glow * .85) | 0},${lerp(70, 196, glow * .85) | 0},${lerp(140, 92, glow) | 0})` : "#26468c"; g.fillRect(x, y, w, h); g.fillStyle = "rgba(255,255,255,.22)"; g.fillRect(x, y + h / 2 - 1, w, 2); g.fillRect(x + w / 3, y, 2, h); g.fillRect(x + 2 * w / 3, y, 2, h); }
 function sTiles(t) {
   darkBg(.6); const T0 = ws(17), T1 = ws(18) + .1, cols = 18, tw = 34, th = 24, gp = 5, bw = cols * (tw + gp) - gp, bh = 9 * (th + gp) - gp;
-  const push = lerp(1, 1.07, eio(prog(t, 5.2, 10.2))), shrink = eio(prog(t, 10.25, 11.1));
+  const push = lerp(1, 1.07, eio(prog(t, 5.2, 10.2))), shrink = eio(prog(t, ws(32) + .2, ws(38) - .15));
   g.save(); g.translate(CX, 1080); g.scale(push * lerp(1, .02, shrink), push * lerp(1, .02, shrink)); g.translate(-CX, -1080);
   const bx = CX - bw / 2, by = 1080 - bh / 2, wave = prog(t, ws(24) - .1, ws(24) + .6), hit = ws(32) + .02, bump = prog(t, hit, hit + .5);
   for (let i = 0; i < 162; i++) { const k = eob(prog(t, T0 + i * (T1 - T0) / 162, T0 + i * (T1 - T0) / 162 + .25)); if (k <= 0) continue; const c = i % cols, r = (i / cols) | 0, x = bx + c * (tw + gp), y = by + r * (th + gp);
@@ -580,9 +580,9 @@ function sTiles(t) {
   g.restore(); regEl("tiles", bx, by, bw, bh, prog(t, T0, T0 + .3) * (1 - shrink));
   if (shrink > 0) { g.save(); g.globalCompositeOperation = "lighter"; const r = g.createRadialGradient(540, 1080, 0, 540, 1080, 120 * (1 - shrink * .6)); r.addColorStop(0, `rgba(255,214,140,${shrink})`); r.addColorStop(1, "rgba(255,170,60,0)"); g.fillStyle = r; g.fillRect(300, 840, 480, 480); g.restore(); }
   // the number
-  const na = win(t, T0 - .1, 10.5, .25, .4); if (na > 0) { const n = Math.round(162 * eo(prog(t, T0, T1))); g.save(); g.globalAlpha = na; g.textAlign = "center"; g.font = "800 230px Playfair"; g.fillStyle = "#F5EFE3"; g.fillText(String(n), 470, 790); const nw = g.measureText("162").width;
+  const na = win(t, T0 - .1, ws(32) + .45, .25, .4); if (na > 0) { const n = Math.round(162 * eo(prog(t, T0, T1))); g.save(); g.globalAlpha = na; g.textAlign = "center"; g.font = "800 230px Playfair"; g.fillStyle = "#F5EFE3"; g.fillText(String(n), 470, 790); const nw = g.measureText("162").width;
     g.font = "600 110px Oswald"; g.fillStyle = "#F2B544"; g.textAlign = "left"; g.fillText("GW", 470 + nw / 2 + 18, 790); g.restore(); reg("162", 470 - nw / 2, 610, nw + 140, 190, na, 110, 14);
-    kicker(t, "INDIA'S SOLAR CAPACITY", T0 - .1, 10.5, 1330); }
+    kicker(t, "INDIA'S SOLAR CAPACITY", T0 - .1, ws(32) + .45, 1330); }
 }
 // S6 — the pylon (photo): the pipeline for electricity
 function sPylon(t) {
@@ -708,8 +708,8 @@ function sEnd(t) {
 const SC = [
   { id: "rows", t0: 0, t1: 3.2, f: sRows },
   { id: "dusk", t0: 2.85, t1: 5.65, f: duskFrame, tr: "push" },
-  { id: "tiles", t0: 5.2, t1: 11.3, f: sTiles, tr: "push" },
-  { id: "earth", t0: 10.75, t1: 25.7, f: t => { earthFrame(t); earthOverlay(t); }, tr: "fade" },
+  { id: "tiles", t0: 5.2, t1: ws(38) + .05, f: sTiles, tr: "push" },
+  { id: "earth", t0: ws(32) + .75, t1: 25.7, f: t => { earthFrame(t); earthOverlay(t); }, tr: "fade" },
   { id: "dam", t0: 25.2, t1: 33.3, f: museumFrame, tr: "push" },
   { id: "pylon", t0: 32.8, t1: 36.6, f: transFrame, tr: "push" },
   { id: "time", t0: 36.1, t1: 41.9, f: sTimeline, tr: "whipL" },
@@ -725,7 +725,7 @@ const SC = [
 const CAPS = [
   { id: "c0", n0: 0, n1: 8, txt: { 8: "expected," }, t1: 3.0, size: 66, st: { faster: { hl: "lav" } } },
   { id: "c1", n0: 9, n1: 16, t1: 5.4, size: 76, st: { stuck: { it: 1, hl: "or" } } },
-  { id: "c4", i0: 25, i1: 32, t1: 11.75, st: { move: { hl: "lav" } } },
+  { id: "c4", i0: 25, i1: 32, t1: ws(32) + .7, st: { move: { hl: "lav" } } },
   { id: "c6", n0: 35, n1: 42, txt: { 42: "region." }, t1: 14.5, st: { one: { it: 1, hl: "or" }, region: { it: 1, hl: "or" } } },
   { id: "c7", n0: 45, n1: 50, txt: { 46: "sun,", 50: "power." }, t1: 20.0, size: 66, st: { sun: { it: 1, hl: "or" } } },
   { id: "c8", i0: 59, i1: 66, t1: 23.3, st: { not: { it: 1, hl: "or" } } },
