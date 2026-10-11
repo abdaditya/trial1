@@ -226,6 +226,180 @@ function polaroid(im, cx, cy, w, h, rot, a, dateline, sc = 1, id) {
   reg(id, cx - w / 2 - 16, cy - h / 2 - 16, w + 32, h + 92, a, 36, 14);
 }
 
+// ======================================================================
+// 3D toolkit: merged geometry, pylons, wires, panels, sky + reflections
+// ======================================================================
+RND.shadowMap.enabled = true; RND.shadowMap.type = THREE.PCFSoftShadowMap;
+const PMREM = new THREE.PMREMGenerator(RND);
+function mergeGeos(list) {   // [{geo, m: Matrix4}] -> one non-indexed geometry
+  let n = 0; const parts = list.map(({ geo, m }) => { const g2 = (geo.index ? geo.toNonIndexed() : geo.clone()); g2.applyMatrix4(m); n += g2.attributes.position.count; return g2; });
+  const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+  for (const g2 of parts) { pos.set(g2.attributes.position.array, o * 3); nor.set(g2.attributes.normal.array, o * 3); o += g2.attributes.position.count; g2.dispose(); }
+  const out = new THREE.BufferGeometry(); out.setAttribute("position", new THREE.BufferAttribute(pos, 3)); out.setAttribute("normal", new THREE.BufferAttribute(nor, 3)); return out;
+}
+const _up = new THREE.Vector3(0, 1, 0);
+function beam(list, a, b, r) { const d = new THREE.Vector3().subVectors(b, a), len = d.length(), m = new THREE.Matrix4();
+  m.compose(a.clone().add(b).multiplyScalar(.5), new THREE.Quaternion().setFromUnitVectors(_up, d.normalize()), new THREE.Vector3(1, 1, 1)); list.push({ geo: new THREE.CylinderGeometry(r, r, len, 6, 1), m }); }
+// classic lattice tower, 10 units tall; returns geometry + local wire attachment points
+let PYLON_GEO = null; const PYLON_ATT = [[-3, 7.0, 0], [3, 7.0, 0], [-2.2, 8.5, 0], [2.2, 8.5, 0]].map(p => new THREE.Vector3(...p));
+function pylonGeometry() {
+  if (PYLON_GEO) return PYLON_GEO; const L = [], V = (x, y, z) => new THREE.Vector3(x, y, z), lv = [0, 1.6, 3.2, 4.6, 5.9, 7.0, 8.5, 9.6], wAt = y => lerp(1.7, .32, y / 9.6);
+  const corner = (y, sx, sz) => V(sx * wAt(y), y, sz * wAt(y)), C = [[1, 1], [1, -1], [-1, -1], [-1, 1]];
+  for (const [sx, sz] of C) for (let i = 0; i < lv.length - 1; i++) beam(L, corner(lv[i], sx, sz), corner(lv[i + 1], sx, sz), .07);
+  for (let i = 0; i < lv.length; i++) for (let c = 0; c < 4; c++) { const [ax, az] = C[c], [bx, bz] = C[(c + 1) % 4]; beam(L, corner(lv[i], ax, az), corner(lv[i], bx, bz), .035);
+    if (i < lv.length - 1) { beam(L, corner(lv[i], ax, az), corner(lv[i + 1], bx, bz), .03); beam(L, corner(lv[i], bx, bz), corner(lv[i + 1], ax, az), .03); } }
+  for (const [y, w] of [[7.0, 3.1], [8.5, 2.3]]) { beam(L, V(-w, y, .25), V(w, y, .25), .07); beam(L, V(-w, y, -.25), V(w, y, -.25), .07); beam(L, V(-w, y, .25), V(-w, y, -.25), .05); beam(L, V(w, y, .25), V(w, y, -.25), .05);
+    beam(L, V(-w, y, 0), V(-.5, y + .9, 0), .045); beam(L, V(w, y, 0), V(.5, y + .9, 0), .045); }
+  for (const p of PYLON_ATT) beam(L, p.clone().setY(p.y + .02), p.clone().setY(p.y - .7), .06);   // insulators
+  beam(L, V(0, 9.6, 0), V(0, 10.4, 0), .05);
+  return (PYLON_GEO = mergeGeos(L));
+}
+const STEEL = new THREE.MeshStandardMaterial({ color: 0x9aa1a8, metalness: .75, roughness: .38 });
+function addPylon(scene, x, z, rotY = 0) { const m = new THREE.Mesh(pylonGeometry(), STEEL); m.position.set(x, 0, z); m.rotation.y = rotY; m.castShadow = true; scene.add(m); return m; }
+function att(tower, i) { tower.updateMatrixWorld(); return PYLON_ATT[i].clone().setY(PYLON_ATT[i].y - .7).applyMatrix4(tower.matrixWorld); }
+function sagCurve(a, b, sag) { const pts = []; for (let i = 0; i <= 24; i++) { const k = i / 24, p = a.clone().lerp(b, k); p.y -= sag * 4 * k * (1 - k); pts.push(p); } return new THREE.CatmullRomCurve3(pts); }
+function wire(scene, curve, r = .03, color = 0x2a2a2e) { const geo = new THREE.TubeGeometry(curve, 48, r, 5, false), m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, metalness: .6, roughness: .5 })); m.userData.n = geo.index.count; m.castShadow = true; scene.add(m); return m; }
+function skyDome(top, mid, bottom, sunDir, sunCol) {   // gradient sky with a soft sun
+  return new THREE.Mesh(new THREE.SphereGeometry(300, 48, 24), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(top) }, mid: { value: new THREE.Color(mid) }, bot: { value: new THREE.Color(bottom) }, sd: { value: sunDir.clone().normalize() }, sc: { value: new THREE.Color(sunCol) } },
+    vertexShader: `varying vec3 vD; void main(){ vD=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader: `uniform vec3 top,mid,bot,sd,sc; varying vec3 vD; void main(){ float y=vD.y; vec3 c= y>0.0 ? mix(mid,top,pow(clamp(y*1.6,0.0,1.0),.7)) : mix(mid,bot,clamp(-y*6.0,0.0,1.0));
+      float s=max(dot(vD,sd),0.0); c+=sc*(pow(s,600.0)*3.0+pow(s,18.0)*.35); gl_FragColor=vec4(c,1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }` }));
+}
+function envFrom(objs) { const s = new THREE.Scene(); objs.forEach(o => s.add(o.clone ? o.clone() : o)); return PMREM.fromScene(s, .02).texture; }
+function canvasTex(w, h, draw, rep = [1, 1], srgb = true) { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(...rep); t.anisotropy = 8; return t; }
+const cellTex = () => canvasTex(512, 280, (x, w, h) => { x.fillStyle = "#c9cdd3"; x.fillRect(0, 0, w, h); for (let i = 0; i < 12; i++) for (let j = 0; j < 6; j++) { const gr = x.createLinearGradient(i * 42, j * 46, i * 42 + 42, j * 46 + 46); gr.addColorStop(0, "#22427f"); gr.addColorStop(1, "#0f2152"); x.fillStyle = gr; x.fillRect(i * 42 + 3, j * 46 + 3, 38, 41); x.fillStyle = "rgba(210,225,255,.22)"; x.fillRect(i * 42 + 3, j * 46 + 22, 38, 1.5); } });
+const cellMask = () => canvasTex(512, 280, (x, w, h) => { x.fillStyle = "#000"; x.fillRect(0, 0, w, h); x.fillStyle = "#fff"; for (let i = 0; i < 12; i++) for (let j = 0; j < 6; j++) x.fillRect(i * 42 + 3, j * 46 + 3, 38, 41); }, [1, 1], false);
+const sandTex = () => canvasTex(1024, 1024, (x, w, h) => { x.fillStyle = "#b8916a"; x.fillRect(0, 0, w, h); for (let i = 0; i < 9000; i++) { const v = R(); x.fillStyle = `rgba(${v > .5 ? "255,236,205" : "90,62,40"},${.05 + R() * .07})`; x.fillRect(R() * w, R() * h, 2 + R() * 6, 1 + R() * 2); }
+  x.strokeStyle = "rgba(255,240,215,.08)"; x.lineWidth = 3; for (let i = 0; i < 70; i++) { x.beginPath(); const y = R() * h; x.moveTo(0, y); for (let px = 0; px <= w; px += 32) x.lineTo(px, y + Math.sin(px * .02 + i) * 8); x.stroke(); } }, [24, 24]);
+
+// ---------- Frame 2: the camera rolls out of one panel to a line that just stops ----------
+const DUSK = new THREE.Scene(); let DFIELD, DPANMAT, DWIRES = [], DPULSE2 = [], DSPARK2, DLAST;
+function buildDusk() {
+  const sunDir = new THREE.Vector3(-.35, .09, -1);
+  const sky = skyDome(0x1d2a4a, 0xf2a35a, 0x2a1d18, sunDir, 0xffd2a0); DUSK.add(sky); DUSK.environment = envFrom([sky]);
+  DUSK.fog = new THREE.Fog(0xc98a5a, 60, 260);
+  const sun = new THREE.DirectionalLight(0xffc48a, 3.2); sun.position.copy(sunDir).multiplyScalar(-1).setY(.0).add(new THREE.Vector3(0, 0, 0)); sun.position.set(-40, 22, -120); sun.target.position.set(0, 0, -40);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 90, bottom: -90, near: 1, far: 400 }); sun.shadow.bias = -.0006; DUSK.add(sun, sun.target);
+  DUSK.add(new THREE.HemisphereLight(0x8fa2d0, 0x5a3a26, .55));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(800, 800).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: sandTex(), roughness: .95, color: 0xd8b48c })); ground.receiveShadow = true; DUSK.add(ground);
+  // the field: 13 rows x 29 panels, tilted to the sun, cells glow gold when powered
+  DPANMAT = new THREE.MeshStandardMaterial({ map: cellTex(), emissiveMap: cellMask(), emissive: new THREE.Color(0xffb44a), emissiveIntensity: 0, metalness: .45, roughness: .22, envMapIntensity: 1.2 });
+  const pg = new THREE.BoxGeometry(2, .05, 1.15), frame = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, metalness: .8, roughness: .35 });
+  const mats = [frame, frame, DPANMAT, frame, frame, frame], n = 13 * 29; DFIELD = new THREE.InstancedMesh(pg, mats, n); DFIELD.castShadow = true; DFIELD.receiveShadow = true;
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(.42, 0, 0)); let k = 0;
+  for (let r = 0; r < 13; r++) for (let c = 0; c < 29; c++) { m.compose(new THREE.Vector3((c - 14) * 2.15, 1.0, -r * 3.1), q, new THREE.Vector3(1, 1, 1)); DFIELD.setMatrixAt(k++, m); }
+  DUSK.add(DFIELD);
+  const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(.04, .04, 1.0, 6), frame, n); k = 0; for (let r = 0; r < 13; r++) for (let c = 0; c < 29; c++) { m.makeTranslation((c - 14) * 2.15, .5, -r * 3.1); post.setMatrixAt(k++, m); } post.castShadow = true; DUSK.add(post);
+  // substation + the line that stops after four towers
+  const yard = new THREE.MeshStandardMaterial({ color: 0x8d949b, metalness: .6, roughness: .45 });
+  for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8 + (i % 2) * .8, 1.6), yard); b.position.set(-4 + i * 2, .9, -44); b.castShadow = true; DUSK.add(b); }
+  const gantry = addPylon(DUSK, 0, -46); gantry.scale.set(.8, .7, .8);
+  const towers = [-58, -72, -86, -100].map(z => addPylon(DUSK, 0, z)); DLAST = towers[3];
+  const chain = [gantry, ...towers];
+  for (let i = 0; i < chain.length - 1; i++) for (let a = 0; a < 4; a++) { const c = sagCurve(att(chain[i], a), att(chain[i + 1], a), 1.1); DWIRES.push({ mesh: wire(DUSK, c), curve: c, seg: i }); }
+  for (let a = 0; a < 4; a++) { const p0 = att(DLAST, a), p1 = new THREE.Vector3(p0.x * .8, .05, -110 - a * .6), mid = p0.clone().lerp(p1, .5); mid.y = p0.y * .25;   // cut wires hang to the sand
+    const c = new THREE.CatmullRomCurve3([p0, mid, p1]); DWIRES.push({ mesh: wire(DUSK, c), curve: c, seg: 4 }); }
+  for (let i = 0; i < 28; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GOLD, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); DUSK.add(s); DPULSE2.push(s); }
+  DSPARK2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: REDG, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); DUSK.add(DSPARK2);
+}
+function duskFrame(t) {
+  const T_SEND = ws(11), T_ANY = ws(14);
+  const cam = track([[2.85, [.12, 1.72, .62, 0, 1.0, -.22, 0]], [3.55, [3.5, 6.0, 8.5, 0, .8, -8, .12]], [T_SEND + .1, [12, 11, -22, 0, 5, -70, .18]], [T_ANY, [9, 8.5, -78, 0, 5.5, -101, .07]], [5.75, [8.2, 7.6, -86, 0, 5.0, -104, .04]]], t);
+  CAM.fov = 42; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -150, W, H); CAM.position.set(cam[0], cam[1], cam[2]); CAM.up.set(Math.sin(cam[6]), Math.cos(cam[6]), 0); CAM.lookAt(cam[3], cam[4], cam[5]); CAM.updateProjectionMatrix();
+  DPANMAT.emissiveIntensity = .9 * eo(prog(t, 2.9, 3.5));
+  const die = prog(t, T_ANY + .05, T_ANY + .8), wireCurves = DWIRES.filter(w => w.seg < 4);
+  DPULSE2.forEach((s, i) => { const w = wireCurves[i % wireCurves.length], seg = w.seg, start = T_SEND - .1 + seg * .14 + (i / DPULSE2.length) * .12, u = clamp((Math.min(t, T_ANY + .1) - start) * 3.2);
+    s.visible = u > 0 && u < 1 || (seg === 3 && u >= 1); s.position.copy(w.curve.getPoint(Math.min(u, 1))); s.material.color.set(die > 0 ? 0xff5a3c : 0xffffff); s.material.opacity = 1 - die * .9; s.scale.setScalar(seg === 3 && u >= 1 ? .9 + .3 * Math.sin(t * 40 + i) : .7); });
+  const sk = prog(t, T_ANY - .05, T_ANY + .1) * (1 - prog(t, T_ANY + .5, T_ANY + 1.2)); DSPARK2.position.copy(att(DLAST, 1)); DSPARK2.material.opacity = sk * (Math.sin(t * 70) > 0 ? 1 : .45); DSPARK2.scale.setScalar(1.2 + 2.5 * sk);
+  draw3D(DUSK, 0x1d2a4a);
+  const gr = g.createLinearGradient(0, 0, 0, 900); gr.addColorStop(0, "rgba(10,9,16,.72)"); gr.addColorStop(1, "rgba(10,9,16,0)"); g.fillStyle = gr; g.fillRect(0, 0, W, 900);
+  if (die > 0) vignette(.4 * (1 - prog(t, T_ANY + .6, 5.7)), "150,20,10");
+}
+
+// ---------- The dam analogy: a museum cut-away model on a dark stage ----------
+const MUSEUM = new THREE.Scene(); let MW_WATER, MW_GHOST, MW_GN = 0, MW_WIN;
+function buildMuseum() {
+  const env = new THREE.Scene(); env.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), new THREE.MeshBasicMaterial({ color: 0x0a0a0d, side: THREE.BackSide })));
+  for (const [x, y, z, c, s] of [[-20, 18, 10, 0xffe2c0, 14], [22, 14, -12, 0x6f8fc0, 6], [0, 25, -20, 0xffffff, 8]]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide })); p.position.set(x, y, z); p.lookAt(0, 0, 0); env.add(p); }
+  MUSEUM.environment = PMREM.fromScene(env, .04).texture;
+  const key = new THREE.SpotLight(0xffe0bc, 900, 80, .5, .6, 2); key.position.set(-12, 16, 12); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -.0004; MUSEUM.add(key, key.target);
+  const rim = new THREE.DirectionalLight(0x8fb8ff, 1.6); rim.position.set(10, 6, -14); MUSEUM.add(rim); MUSEUM.add(new THREE.HemisphereLight(0x3a4050, 0x0a0a0c, .35));
+  const stage = canvasTex(512, 512, (x, w, h) => { const gr = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, "#1d1a22"); gr.addColorStop(1, "#060508"); x.fillStyle = gr; x.fillRect(0, 0, w, h); });
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(40, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: stage })); floor.position.y = -2.31; MUSEUM.add(floor);
+  const shad = new THREE.Mesh(new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: .55 })); shad.position.y = -2.3; shad.receiveShadow = true; MUSEUM.add(shad);
+  const strata = canvasTex(1024, 256, (x, w, h) => { const bands = ["#6b4a33", "#7d5a3d", "#8e6a48", "#5b3f2c", "#a07a52", "#6a4b34"]; let y = 0; bands.forEach((c, i) => { const bh = h / bands.length * (.7 + R() * .6); x.fillStyle = c; x.fillRect(0, y, w, bh + 1); y += bh; });
+    for (let i = 0; i < 1400; i++) { x.fillStyle = `rgba(${R() > .5 ? "255,230,200" : "30,20,12"},${.06 + R() * .08})`; x.fillRect(R() * w, R() * h, 2 + R() * 5, 1 + R() * 3); } });
+  const earth = new THREE.MeshStandardMaterial({ map: strata, roughness: .9 }), topM = new THREE.MeshStandardMaterial({ color: 0xa88866, roughness: .95 });
+  const block = (w, h, d, x, y, z, mat = [earth, earth, topM, earth, earth, earth]) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); b.position.set(x, y, z); b.castShadow = b.receiveShadow = true; MUSEUM.add(b); return b; };
+  block(13, 1.3, 5, 0, -1.65, 0);                 // the slab
+  block(.8, 2.4, 5, -6.1, .2, 0);                 // far bank of the reservoir
+  block(5.2, .3, .25, -3.4, -.85, -2.38);         // reservoir back lip (keeps the water in)
+  // dam: a real gravity-dam profile, extruded
+  const sh = new THREE.Shape(); sh.moveTo(-.25, 1.25); sh.lineTo(.2, 1.25); sh.lineTo(1.05, -1.0); sh.lineTo(-.35, -1.0); sh.closePath();
+  const dam = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 5, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: 0xd8d2c6, roughness: .55, metalness: .05 })); dam.position.set(-.9, 0, -2.5); dam.castShadow = dam.receiveShadow = true; MUSEUM.add(dam);
+  // water volume
+  MW_WATER = new THREE.Mesh(new THREE.BoxGeometry(4.95, 1, 4.9), new THREE.MeshStandardMaterial({ color: 0x2a86d8, emissive: 0x0e3f78, emissiveIntensity: .8, transparent: true, opacity: .78, roughness: .08, metalness: .1, envMapIntensity: 1.6 }));
+  MW_WATER.position.set(-3.2, -1.0, 0); MUSEUM.add(MW_WATER);
+  // dry riverbed: cracked earth
+  const cracked = canvasTex(1024, 512, (x, w, h) => { x.fillStyle = "#b08d66"; x.fillRect(0, 0, w, h); x.strokeStyle = "rgba(60,38,22,.75)"; x.lineWidth = 2.2; for (let i = 0; i < 140; i++) { let px = R() * w, py = R() * h; x.beginPath(); x.moveTo(px, py); for (let s = 0; s < 6; s++) { px += (R() - .5) * 70; py += (R() - .5) * 70; x.lineTo(px, py); } x.stroke(); } });
+  const bed = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 5).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: cracked, roughness: 1 })); bed.position.set(3.2, -.995, 0); bed.receiveShadow = true; MUSEUM.add(bed);
+  // the city: a plinth of towers, windows dim
+  const cw = canvasTex(64, 128, (x, w, h) => { x.fillStyle = "#1a1c22"; x.fillRect(0, 0, w, h); for (let j = 4; j < h; j += 10) for (let i = 4; i < w; i += 10) { x.fillStyle = R() < .35 ? "#ffcf86" : "#2b2e36"; x.fillRect(i, j, 6, 6); } });
+  MW_WIN = new THREE.MeshStandardMaterial({ color: 0xe9e4da, emissive: 0xffc070, emissiveMap: cw, emissiveIntensity: .25, roughness: .6 });
+  for (let i = 0; i < 14; i++) { const h2 = .6 + R() * 1.9, b = new THREE.Mesh(new THREE.BoxGeometry(.45 + R() * .3, h2, .45 + R() * .3), MW_WIN); b.position.set(4.3 + (i % 4) * .62 + R() * .1, -1 + h2 / 2, -1.7 + ((i / 4) | 0) * 1.05); b.castShadow = true; MUSEUM.add(b); }
+  // the pipeline nobody built: a glowing ghost in the gap
+  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(.3, -.8, 1.2), new THREE.Vector3(1.8, -.75, 1.0), new THREE.Vector3(3.2, -.75, .6), new THREE.Vector3(4.1, -.8, .3)]);
+  MW_GHOST = new THREE.Mesh(new THREE.TubeGeometry(curve, 80, .11, 12, false), new THREE.MeshBasicMaterial({ color: 0x5cc0ff, transparent: true, opacity: .0, depthWrite: false })); MW_GN = MW_GHOST.geometry.index.count; MUSEUM.add(MW_GHOST);
+}
+function museumFrame(t) {
+  const orb = track([[25.2, [-80, 34, 24, .2, -.6, 0]], [27.6, [-70, 30, 21, -.6, -.6, 0]], [28.4, [-50, 44, 19, 1.8, -.9, .6]], [29.9, [-40, 46, 18, 2.2, -.9, .6]], [31.2, [-60, 30, 20.5, .8, -.6, 0]], [33.3, [-44, 24, 17, 2.4, -.5, 0]]], t);
+  const az = orb[0] * Math.PI / 180, el = orb[1] * Math.PI / 180, d = orb[2], tg = new THREE.Vector3(orb[3], orb[4], orb[5]);
+  CAM.fov = 32; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -120, W, H); CAM.up.set(0, 1, 0);
+  CAM.position.set(tg.x + d * Math.cos(el) * Math.sin(az), tg.y + d * Math.sin(el), tg.z + d * Math.cos(el) * Math.cos(az)); CAM.lookAt(tg); CAM.updateProjectionMatrix();
+  const lvl = lerp(.08, 2.15, eio(prog(t, ws(84) - .2, ws(97) + .1)));      // rises with "plenty" ... brim on "full"
+  MW_WATER.scale.y = lvl; MW_WATER.position.y = -1.0 + lvl / 2;
+  const grow = eio(prog(t, ws(88) - .05, ws(93) + .1)), gone = prog(t, 29.95, 30.7);
+  MW_GHOST.geometry.setDrawRange(0, Math.floor(MW_GN * grow / 6) * 6); MW_GHOST.material.opacity = .85 * (1 - gone) * (gone > 0 ? (Math.sin(t * 50) > 0 ? 1 : .35) : 1);
+  MW_WIN.emissiveIntensity = lerp(.25, .08, prog(t, ws(100), ws(102) + .3));
+  draw3D(MUSEUM, 0x0b0a0e);
+  // small labels pinned to the model, landing on their words
+  const pin = (txt2, v, a, col, id) => { if (a <= 0) return; const [x, y] = screenOf(v); g.save(); g.globalAlpha = a; g.font = "600 44px Oswald"; g.letterSpacing = "5px"; const tw = g.measureText(txt2).width + 5;
+    const bx = clamp(x - tw / 2 - 20, SAFE.x0, SAFE.x1 - tw - 40), by = clamp(y - 100, 560, SAFE.y1 - 70); g.fillStyle = "rgba(12,10,16,.86)"; rrect(bx, by, tw + 40, 64, 10); g.fill(); g.fillStyle = col; g.textAlign = "left"; g.fillText(txt2, bx + 22, by + 47);
+    g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(clamp(x, bx + 10, bx + tw + 30), by + 64); g.lineTo(x, y); g.stroke(); g.restore(); reg("pin:" + id, bx, by, tw + 40, 64, a, 44, 12); };
+  pin("DAM", new THREE.Vector3(-.7, 1.3, 1.5), win(t, ws(82) - .05, ws(86), .3, .3), "#F5EFE3", "dam");
+  pin("FULL", new THREE.Vector3(-3.2, -1 + lvl, 1.5), win(t, ws(96) - .05, 33.2, .3, .3), "#8FD3FF", "full");
+  pin("NO PIPELINE", new THREE.Vector3(2.2, -.75, 1.0), win(t, 29.9, 31.3, .25, .3), "#8FD3FF", "pipe");
+  pin("CITY: DRY", new THREE.Vector3(5.2, .4, 0), win(t, ws(100) - .05, 33.2, .3, .3), "#FF8A80", "city");
+}
+
+// ---------- "That pipeline is called transmission": towers rise across real farmland ----------
+const TRANS = new THREE.Scene(); let TTOWERS = [], TWIRES = [], TPULSE = [];
+async function buildTrans() {
+  const sunDir = new THREE.Vector3(.5, .35, -1), sky = skyDome(0x6f93c4, 0xe9dcc4, 0x7d8a6a, sunDir, 0xfff0d0); TRANS.add(sky); TRANS.environment = envFrom([sky]);
+  TRANS.fog = new THREE.Fog(0xdcd6c4, 40, 150);
+  const sun = new THREE.DirectionalLight(0xfff0d8, 2.6); sun.position.set(30, 30, -40); sun.target.position.set(0, 0, -30); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 70, bottom: -70, near: 1, far: 200 }); sun.shadow.bias = -.0006; TRANS.add(sun, sun.target);
+  TRANS.add(new THREE.HemisphereLight(0xcfe0ff, 0x56603e, .7));
+  const ft = await tex("img/punjab.jpg"); const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 90).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ map: ft, color: 0xd2d8c2, roughness: 1 })); ground.rotation.y = Math.PI / 2; ground.position.z = -40; ground.receiveShadow = true; TRANS.add(ground);
+  for (let i = 0; i < 8; i++) TTOWERS.push(addPylon(TRANS, 0, 6 - i * 15));
+  for (let i = 0; i < TTOWERS.length - 1; i++) for (let a = 0; a < 4; a++) { const c = sagCurve(att(TTOWERS[i], a), att(TTOWERS[i + 1], a), 1.2); TWIRES.push({ mesh: wire(TRANS, c, .035), curve: c, i }); }
+  for (let i = 0; i < 24; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: GOLD, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); TRANS.add(s); TPULSE.push(s); }
+}
+function transFrame(t) {
+  const cam = track([[32.8, [9, 2.2, 16, 0, 7.5, -8]], [34.4, [7.5, 4.5, 2, 0, 7, -40]], [36.7, [6.5, 6.5, -24, 0, 6.5, -90]]], t);
+  CAM.fov = 44; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -120, W, H); CAM.up.set(0, 1, 0); CAM.position.set(cam[0], cam[1], cam[2]); CAM.lookAt(cam[3], cam[4], cam[5]); CAM.updateProjectionMatrix();
+  TTOWERS.forEach((tw, i) => { const k = eob(prog(t, 32.9 + i * .22, 33.5 + i * .22)); tw.scale.set(1, Math.max(.001, k), 1); tw.visible = k > .002; });
+  TWIRES.forEach(w => { const k = eio(prog(t, 33.4 + w.i * .22, 33.9 + w.i * .22)); w.mesh.geometry.setDrawRange(0, Math.floor(w.mesh.userData.n * k / 6) * 6); });
+  const nSeg = TTOWERS.length - 1;   // pulses run the whole line, one conductor each
+  TPULSE.forEach((sp, i) => { const a = i % 4, u = ((((t - 34.2) * .16 + i / TPULSE.length) % 1) + 1) % 1, si = Math.min(nSeg - 1, Math.floor(u * nSeg)), w = TWIRES[si * 4 + a];
+    sp.position.copy(w.curve.getPoint(u * nSeg - si)); sp.material.opacity = prog(t, 34.2, 34.6) * (t > 33.9 + si * .22 ? 1 : 0); sp.scale.setScalar(.9); });
+  draw3D(TRANS, 0xdcd6c4);
+  vignette(.35); shade(.8, 820, .4);
+}
+
 // ---------- Land plots: right-of-way ----------
 const PLOTS = new THREE.Scene(); let PLOT_MESH, PINS, ROUTE, TOWERS = [];
 const ROUTE_A = new THREE.Vector3(-8.5, 0, 3.4), ROUTE_B = new THREE.Vector3(8.5, 0, -3.6);
@@ -525,11 +699,12 @@ function sEnd(t) {
 // timeline: scenes overlap during transitions; captions sit on top
 // ======================================================================
 const SC = [
-  { id: "rows", t0: 0, t1: 5.65, f: sRows },
+  { id: "rows", t0: 0, t1: 3.2, f: sRows },
+  { id: "dusk", t0: 2.85, t1: 5.65, f: duskFrame, tr: "push" },
   { id: "tiles", t0: 5.2, t1: 11.3, f: sTiles, tr: "push" },
   { id: "earth", t0: 10.85, t1: 25.7, f: t => { earthFrame(t); earthOverlay(t); }, tr: "fade" },
-  { id: "dam", t0: 25.2, t1: 33.3, f: sDam, tr: "push" },
-  { id: "pylon", t0: 32.8, t1: 36.6, f: sPylon, tr: "fade" },
+  { id: "dam", t0: 25.2, t1: 33.3, f: museumFrame, tr: "push" },
+  { id: "pylon", t0: 32.8, t1: 36.6, f: transFrame, tr: "push" },
   { id: "time", t0: 36.1, t1: 41.9, f: sTimeline, tr: "whipL" },
   { id: "plots", t0: 41.4, t1: 50.7, f: plotsFrame, tr: "push" },
   { id: "q1", t0: 50.2, t1: 53.1, f: t => sQuestion(t, false), tr: "fade" },
@@ -595,6 +770,6 @@ window.seek = t => window.seekOrig(toOrig(t));
 window.DUR = DUR; window.SAFE = SAFE;
 window.CUES = [["anywhere", ws(14)], ["tiles", ws(17)], ["wall", ws(32)], ["earth", 11.1], ["desert", ws(52)], ["km", ws(75)], ["dam", 25.3], ["pipe_gone", 29.9], ["transmission", ws(109)], ["years", ws(125)], ["delayed", ws(146)], ["q1", ws(148)], ["stop", ws(171)], ["term", ws(172)], ["switchoff", ws(177)], ["counter", ws(193)], ["q2", ws(210)], ["donut", ws(215)], ["held", ws(237)], ["finale", 83.7], ["end", 88.9]].map(([s, t]) => ({ s, t: +toEdit(t).toFixed(3) }));
 window.ready = false;
-Promise.all([...loads, buildEarth(), buildPlots(), document.fonts.load("800 80px Playfair"), document.fonts.load("italic 800 80px Playfair"), document.fonts.load("700 30px Inter"), document.fonts.load("600 60px Oswald")])
-  .then(() => { GOLDL = buildGold(IM.bhadla2, IM.mask); GOLD1 = buildGold(IM.bhadla1, IM.mask1, .7); window.seek(0); window.ready = true; });
+Promise.all([...loads, buildEarth(), buildPlots(), buildTrans(), document.fonts.load("800 80px Playfair"), document.fonts.load("italic 800 80px Playfair"), document.fonts.load("700 30px Inter"), document.fonts.load("600 60px Oswald")])
+  .then(() => { GOLDL = buildGold(IM.bhadla2, IM.mask); GOLD1 = buildGold(IM.bhadla1, IM.mask1, .7); buildDusk(); buildMuseum(); window.seek(0); window.ready = true; });
 </script></body></html>
