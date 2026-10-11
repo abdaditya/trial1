@@ -30,13 +30,14 @@ function qa(t, boxes) {
     if (b.x < SAFE.x0 || b.x + b.w > SAFE.x1 || b.y < SAFE.y0 || b.y + b.h > SAFE.y1)
       fails.push({ t, kind: "outside-safe-zone", id: b.id, box: b });
   }
-  for (const b of boxes.filter(b => (b.read ?? b.a) > 0.6)) {
+  for (const b of boxes.filter(b => !b.el && (b.read ?? b.a) > 0.6)) {
     if (b.contrast < 7) fails.push({ t, kind: "low-contrast", id: b.id, contrast: b.contrast });
     if (b.size < 36) fails.push({ t, kind: "text-too-small", id: b.id, size: b.size });
   }
   for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) {
     const a = vis[i], b = vis[j], gap = 16; // boxes must keep a 16 px gap
-    if (a.group && a.group === b.group) continue;   // a designed lockup (script over display word) may overlap itself
+    if (a.group && a.group === b.group) continue;
+    if (a.el && b.el) continue;   // visual elements may overlap each other; text may not touch them
     if (a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap)
       fails.push({ t, kind: "overlap", ids: [a.id, b.id] });
   }
