@@ -1,0 +1,298 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>What happens when you pay ₹10 by UPI</title>
+<style>
+  @font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage800.woff2) format("woff2"); font-weight: 800; }
+  @font-face { font-family: "Figtree"; src: url(fonts/figtree600.woff2) format("woff2"); font-weight: 600; }
+  @font-face { font-family: "Figtree"; src: url(fonts/figtree800.woff2) format("woff2"); font-weight: 800; }
+  @font-face { font-family: "Instrument Serif"; src: url(fonts/serif.woff2) format("woff2"); font-style: italic; }
+  html, body { margin: 0; background: #000; }
+  canvas#c { display: block; width: 540px; height: 960px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="lib/three.min.js"></script>
+<script>
+// ===========================================================================
+// zbacktrack · "What happens in the 2 seconds after you pay ₹10 by UPI"
+// A real 3D world (three.js) rendered deterministically: window.seek(t) sets every object from t,
+// renders, composites the 2D type layer, and returns text boxes for QA.
+// ===========================================================================
+const W = 1080, H = 1920, DUR = 10.6;
+const out = document.getElementById("c"), g = out.getContext("2d", { willReadFrequently: true });
+const SAFE = { x0: 90, x1: 990, y0: 250, y1: 1400 };
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), lerp = (a, b, k) => a + (b - a) * k, prog = (t, a, b) => clamp((t - a) / (b - a));
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2, eo = k => 1 - Math.pow(1 - k, 3), ei = k => k * k * k;
+const eob = k => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const win = (t, a, b, fi = .45, fo = .4) => eo(prog(t, a, a + fi)) * (1 - eio(prog(t, b - fo, b)));
+function hash(a, b) { let h = Math.imul(a + 1, 2654435761) ^ Math.imul(b + 7, 2246822519); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; }
+function track(keys, t) { // cubic Hermite through keys (Catmull-Rom tangents); hold:1 stops
+  if (t <= keys[0].t) return { ...keys[0] }; if (t >= keys[keys.length - 1].t) return { ...keys[keys.length - 1] };
+  let i = 0; while (t > keys[i + 1].t) i++;
+  const k0 = keys[i], k1 = keys[i + 1], h = k1.t - k0.t, u = (t - k0.t) / h, o = {};
+  const h00 = 2 * u ** 3 - 3 * u * u + 1, h10 = u ** 3 - 2 * u * u + u, h01 = -2 * u ** 3 + 3 * u * u, h11 = u ** 3 - u * u;
+  for (const f in k0) { if (f === "t" || f === "hold") continue;
+    const tan = j => (keys[j].hold || j === 0 || j === keys.length - 1) ? 0 : (keys[j + 1][f] - keys[j - 1][f]) / (keys[j + 1].t - keys[j - 1].t);
+    o[f] = h00 * k0[f] + h10 * h * tan(i) + h01 * k1[f] + h11 * h * tan(i + 1); }
+  return o;
+}
+
+// ---------- three.js setup ----------
+const R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+R.setPixelRatio(1); R.setSize(W, H, false);
+R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
+R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.05; R.outputColorSpace = THREE.SRGBColorSpace;
+const S = new THREE.Scene();
+const CAM = new THREE.PerspectiveCamera(38, W / H, .02, 400);
+S.fog = new THREE.Fog(0xE59A6B, 18, 70);
+
+const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: .85, metalness: 0, flatShading: true, ...o });
+const glow = (c, i = 2) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, roughness: 1 });
+function box(w, h, d, m, x = 0, y = 0, z = 0, parent = S) { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; }
+function cyl(rt, rb, h, m, x = 0, y = 0, z = 0, seg = 12, parent = S) { const o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; }
+function sph(r, m, x = 0, y = 0, z = 0, parent = S, seg = 14) { const o = new THREE.Mesh(new THREE.SphereGeometry(r, seg, Math.max(6, seg * .7 | 0)), m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; }
+function canvasTex(w, h, draw) { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+
+// palette (dusk in an Indian street)
+const P = { asphalt: 0x3a3436, curb: 0x9a8f86, side: 0x8c7d70, wood: 0x8a5a34, woodDk: 0x5c3a22, teal: 0x1f8a8a, orange: 0xe8672a, cream: 0xf3e3c3,
+  skin: 0xb7794f, vest: 0xe9e2d0, kurta: 0x2f6f9f, hair: 0x231a16, steel: 0xb8bcc2, chai: 0xc0743a, wall1: 0xd98c5f, wall2: 0xc9b08a, wall3: 0x7c9a8e, wall4: 0xb5655b };
+
+// ---------- sky dome ----------
+{ const tex = canvasTex(16, 512, (x, w, h) => { const gr = x.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, "#1d2350"); gr.addColorStop(.35, "#5b3f7a"); gr.addColorStop(.6, "#d9746a"); gr.addColorStop(.78, "#f4b07a"); gr.addColorStop(1, "#f6c48e"); x.fillStyle = gr; x.fillRect(0, 0, w, h); });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(200, 32, 16), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false })); sky.rotation.x = 0; S.add(sky); }
+
+// ---------- lights ----------
+const HEMI = new THREE.HemisphereLight(0xffd2a8, 0x3a2d3a, 1.1); S.add(HEMI);
+const SUN = new THREE.DirectionalLight(0xffb27a, 2.6); SUN.position.set(-14, 9, 10); SUN.castShadow = true;
+SUN.shadow.mapSize.set(2048, 2048); Object.assign(SUN.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 60 }); SUN.shadow.bias = -.0006; S.add(SUN);
+const BULB = new THREE.PointLight(0xffc27a, 6, 6, 1.6); BULB.position.set(0, 2.25, .35); S.add(BULB);
+
+// ---------- street ----------
+box(80, .1, 80, mat(P.asphalt), 0, -.05, 0);
+for (let i = -10; i <= 10; i++) box(1.4, .012, .14, mat(0xe8dcc0), i * 3, .006, 6.5);                      // lane dashes
+box(80, .16, 4.2, mat(P.side), 0, .08, -1.6); box(80, .18, .22, mat(P.curb), 0, .09, 0.5);               // footpath + curb
+// buildings behind and across the street
+const WIN = (seed, lit) => canvasTex(256, 512, (x, w, h) => { x.fillStyle = "#000"; x.fillRect(0, 0, w, h);
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++) { const on = hash(seed * 31 + r, c) < lit; x.fillStyle = on ? (hash(r, c + seed) < .5 ? "#ffd58a" : "#ffb866") : "#000"; x.fillRect(22 + c * 58, 30 + r * 60, 36, 40); } });
+function building(x, z, w, h, d, col, seed) {
+  const m = [mat(col), mat(col), mat(col), mat(col), mat(col, { emissiveMap: WIN(seed, .45), emissive: 0xffffff, emissiveIntensity: 1.4 }), mat(col)];
+  const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, h / 2, z); b.castShadow = b.receiveShadow = true; S.add(b);
+  box(w + .3, .25, d + .3, mat(0x6a5a50), x, h + .12, z);                                                 // parapet
+  if (hash(seed, 9) < .7) { const s = box(w * .7, .5, .08, glow([0xff5a3c, 0x3cc8ff, 0xffd24a][seed % 3], 1.2), x, 2.8 + hash(seed, 3) * 1.5, z + d / 2 + .06); s.castShadow = false; }
+  return b;
+}
+[[-9, -6.5, 5, 8, 4, P.wall1], [-4.2, -7, 3.6, 11, 4, P.wall2], [4.4, -6.8, 4.4, 9, 4, P.wall3], [9.4, -6.5, 4.6, 12, 4, P.wall4], [-14, -6, 4, 7, 4, P.wall3], [14.5, -6.6, 4.4, 8.5, 4, P.wall1],
+ [-7, 16, 6, 10, 4, P.wall4], [0, 17, 5, 13, 4, P.wall2], [7, 16, 6, 9, 4, P.wall1]].forEach((b, i) => building(...b, i + 1));
+// electric poles + sagging wires + string lights
+const WIRE = new THREE.LineBasicMaterial({ color: 0x1a1414 });
+function wire(a, b, sag, n = 24) { const pts = []; for (let i = 0; i <= n; i++) { const k = i / n; pts.push(new THREE.Vector3(lerp(a.x, b.x, k), lerp(a.y, b.y, k) - Math.sin(k * Math.PI) * sag, lerp(a.z, b.z, k))); } S.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), WIRE)); return pts; }
+for (const x of [-6, 6]) { cyl(.07, .09, 7, mat(0x4a4038), x, 3.5, .2, 8); box(1.2, .08, .08, mat(0x4a4038), x, 6.6, .2); }
+wire(new THREE.Vector3(-6, 6.6, .2), new THREE.Vector3(6, 6.6, .2), .7); wire(new THREE.Vector3(-6.5, 6.6, .2), new THREE.Vector3(5.5, 6.6, .2), .9);
+wire(new THREE.Vector3(-6, 6.4, .2), new THREE.Vector3(-9, 7.5, -4.5), .4); wire(new THREE.Vector3(6, 6.4, .2), new THREE.Vector3(9, 8, -4.5), .4);
+const STRING = wire(new THREE.Vector3(-3.2, 3.2, -1.1), new THREE.Vector3(3.2, 3.2, -1.1), .35, 18);
+const BULBS = STRING.slice(1, -1).map((p, i) => sph(.045, glow([0xffd36b, 0xff7a5a, 0x7ad7ff, 0xfff1c0][i % 4], 2.4), p.x, p.y - .05, p.z, S, 8));
+// trees + a scooter for life
+function tree(x, z, s) { cyl(.08 * s, .12 * s, 1.6 * s, mat(0x5a3a26), x, .8 * s, z, 7); const f = new THREE.Mesh(new THREE.IcosahedronGeometry(.95 * s, 0), mat(0x3f7d4a)); f.position.set(x, 2.1 * s, z); f.castShadow = true; S.add(f); }
+tree(-4.6, -2.8, 1.1); tree(5.2, -2.9, 1.25); tree(-11, -3, 1.2);
+{ const sc = new THREE.Group(); sc.position.set(2.6, .02, -1.4); sc.rotation.y = -.5; S.add(sc);
+  box(.95, .28, .32, mat(0xd6413a, { flatShading: false, roughness: .4 }), 0, .45, 0, sc); box(.4, .12, .3, mat(0x222), -.18, .66, 0, sc); cyl(.04, .04, .6, mat(0x333), .42, .75, 0, 6, sc).rotation.z = .35;
+  for (const x of [-.36, .42]) { const w = cyl(.2, .2, .12, mat(0x181818), x, .2, 0, 14, sc); w.rotation.x = Math.PI / 2; } }
+
+// ---------- Raju's chai stall ----------
+const STALL = new THREE.Group(); S.add(STALL);
+box(2.4, 1.0, .9, mat(P.wood), 0, .55, 0, STALL);                                        // counter
+const signTex = canvasTex(1024, 256, (x, w, h) => { x.fillStyle = "#1f8a8a"; x.fillRect(0, 0, w, h); x.fillStyle = "#f3e3c3"; x.font = "800 120px Bricolage Grotesque, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("RAJU CHAI", w / 2, h / 2 + 8);
+  x.strokeStyle = "#f3e3c3"; x.lineWidth = 8; x.strokeRect(16, 16, w - 32, h - 32); });
+{ const m = mat(P.teal); const front = new THREE.Mesh(new THREE.BoxGeometry(2.42, .5, .04), [m, m, m, m, new THREE.MeshStandardMaterial({ map: signTex, roughness: .8 }), m]); front.position.set(0, .7, .46); STALL.add(front); }
+box(2.5, .06, 1.0, mat(P.woodDk), 0, 1.07, 0, STALL);                                    // counter top
+for (const x of [-1.15, 1.15]) for (const z of [-.4, .4]) cyl(.035, .035, 1.4, mat(P.woodDk), x, 1.8, z, 8, STALL);
+// striped awning
+for (let i = 0; i < 9; i++) { const a = box(2.7 / 9, .04, 1.25, mat(i % 2 ? P.cream : P.orange), -1.35 + (i + .5) * 2.7 / 9, 2.55, .15, STALL); a.rotation.x = -.28; }
+for (let i = 0; i < 9; i++) { const f = new THREE.Mesh(new THREE.ConeGeometry(.15, .18, 3), mat(i % 2 ? P.cream : P.orange)); f.position.set(-1.35 + (i + .5) * 2.7 / 9, 2.28, .74); f.rotation.x = Math.PI; f.rotation.y = Math.PI / 6; STALL.add(f); }
+sph(.07, glow(0xffd38a, 3), 0, 2.3, .35, STALL, 10);                                      // bulb
+// stove + kettle + glasses + steam
+cyl(.16, .18, .14, mat(0x2a2a2a), -.55, 1.17, -.1, 12, STALL); cyl(.12, .12, .02, glow(0x3a7bff, 1.5), -.55, 1.25, -.1, 12, STALL);
+const KETTLE = new THREE.Group(); KETTLE.position.set(-.55, 1.36, -.1); STALL.add(KETTLE);
+cyl(.11, .14, .2, mat(P.steel, { metalness: .6, roughness: .35, flatShading: false }), 0, 0, 0, 16, KETTLE); cyl(.05, .11, .06, mat(P.steel, { metalness: .6, roughness: .35 }), 0, .13, 0, 16, KETTLE);
+const spout = cyl(.015, .03, .2, mat(P.steel, { metalness: .6, roughness: .35 }), .15, .03, 0, 8, KETTLE); spout.rotation.z = -1.0;
+const GLASSES = []; for (let i = 0; i < 5; i++) { const gl = cyl(.035, .028, .09, new THREE.MeshStandardMaterial({ color: 0xffe2b0, transparent: true, opacity: .55, roughness: .1 }), .2 + i * .1, 1.15, .18, 10, STALL); cyl(.031, .026, .055, mat(P.chai), .2 + i * .1, 1.13, .18, 10, STALL); GLASSES.push(gl); }
+const POURGLASS = cyl(.035, .028, .09, new THREE.MeshStandardMaterial({ color: 0xffe2b0, transparent: true, opacity: .55, roughness: .1 }), .1, 1.15, .02, 10, STALL);
+const POUR = cyl(.008, .008, .22, mat(P.chai, { emissive: 0x5a2a10, emissiveIntensity: .2 }), .1, 1.3, .02, 6, STALL);
+// QR standee facing the customer
+const QRTEX = canvasTex(512, 720, (x, w, h) => {
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, w, h); x.fillStyle = "#5b2d8c"; x.fillRect(0, 0, w, 120); x.fillStyle = "#fff"; x.font = "800 56px Figtree, sans-serif"; x.textAlign = "center"; x.fillText("Scan & Pay", w / 2, 80);
+  const n = 25, s = 15, ox = (w - n * s) / 2, oy = 170; x.fillStyle = "#111";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const finder = (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+    if (finder) { const rr = r % (n - 7) < 7 ? r % (n - 7) : r, cc = c >= n - 7 ? c - (n - 7) : c, R0 = r >= n - 7 ? r - (n - 7) : r; const on = R0 === 0 || R0 === 6 || cc === 0 || cc === 6 || (R0 >= 2 && R0 <= 4 && cc >= 2 && cc <= 4); if (on) x.fillRect(ox + c * s, oy + r * s, s, s); }
+    else if (hash(r * 7 + 3, c * 13 + 1) < .5) x.fillRect(ox + c * s, oy + r * s, s, s); }
+  x.fillStyle = "#111"; x.font = "800 40px Figtree, sans-serif"; x.fillText("raju@upi", w / 2, oy + n * s + 70); x.fillStyle = "#666"; x.font = "600 30px Figtree, sans-serif"; x.fillText("Raju Tea Stall", w / 2, oy + n * s + 115); });
+const QR = new THREE.Mesh(new THREE.BoxGeometry(.26, .37, .015), [mat(0xffffff), mat(0xffffff), mat(0xffffff), mat(0xffffff), new THREE.MeshStandardMaterial({ map: QRTEX, roughness: .6 }), mat(0xffffff)]);
+QR.position.set(.72, 1.29, .32); QR.rotation.x = -.12; QR.castShadow = true; STALL.add(QR); box(.1, .02, .1, mat(0x333), .72, 1.1, .3, STALL);
+// Raju (behind the counter)
+const RAJU = new THREE.Group(); RAJU.position.set(-.25, 0, -.42); STALL.add(RAJU);
+{ const capsule = (r, l, m) => new THREE.Mesh(new THREE.CapsuleGeometry(r, l, 4, 10), m);
+  const torso = capsule(.24, .45, mat(P.vest, { flatShading: false })); torso.position.set(0, 1.25, 0); torso.castShadow = true; RAJU.add(torso);
+  box(.5, .9, .3, mat(0x6b4b3a), 0, .45, 0, RAJU);                                                    // lungi/legs
+  const head = sph(.17, mat(P.skin, { flatShading: false }), 0, 1.78, 0, RAJU, 18); head.scale.set(1, 1.08, 1);
+  sph(.175, mat(P.hair, { flatShading: false }), 0, 1.84, -.02, RAJU, 16).scale.set(1, .72, 1);       // hair
+  box(.14, .03, .04, mat(P.hair), 0, 1.72, .16, RAJU);                                                // moustache
+  for (const x of [-.06, .06]) sph(.018, mat(0x111), x, 1.8, .155, RAJU, 8);                          // eyes
+  RAJU.userData.armL = new THREE.Group(); RAJU.userData.armL.position.set(-.27, 1.45, 0); RAJU.add(RAJU.userData.armL);
+  const al = capsule(.06, .42, mat(P.skin, { flatShading: false })); al.position.y = -.25; al.castShadow = true; RAJU.userData.armL.add(al);
+  RAJU.userData.armR = new THREE.Group(); RAJU.userData.armR.position.set(.27, 1.45, 0); RAJU.add(RAJU.userData.armR);
+  const ar = capsule(.06, .42, mat(P.skin, { flatShading: false })); ar.position.y = -.25; ar.castShadow = true; RAJU.userData.armR.add(ar);
+  RAJU.userData.head = head; }
+// a pigeon crossing the frame (it freezes mid-flap)
+const BIRD = new THREE.Group(); S.add(BIRD);
+{ const body = sph(.09, mat(0x8a8f9a, { flatShading: false }), 0, 0, 0, BIRD, 12); body.scale.set(1.6, .9, .9); sph(.05, mat(0x6d7280), .14, .05, 0, BIRD, 10);
+  BIRD.userData.w1 = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.06, 0, 0), new THREE.Vector3(.08, 0, 0), new THREE.Vector3(0, 0, .26)]), mat(0x7a808c, { side: THREE.DoubleSide })); BIRD.add(BIRD.userData.w1);
+  BIRD.userData.w2 = BIRD.userData.w1.clone(); BIRD.userData.w2.scale.z = -1; BIRD.add(BIRD.userData.w2); }
+// steam puffs (sprites)
+const PUFFTEX = canvasTex(64, 64, (x, w) => { const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, "rgba(255,255,255,.9)"); gr.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = gr; x.fillRect(0, 0, w, w); });
+const PUFFS = []; for (let i = 0; i < 26; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: PUFFTEX, transparent: true, depthWrite: false, opacity: .5 })); STALL.add(sp); PUFFS.push(sp); }
+
+// ---------- the customer (you) ----------
+const YOU = new THREE.Group(); S.add(YOU);
+const YOUHEAD = []; {
+  const kurta = mat(0x2f6f9f, { flatShading: false, transparent: true }), skinM = mat(0xa86c47, { flatShading: false, transparent: true }), hairM = mat(0x1d1714, { flatShading: false, transparent: true });
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(.2, .5, 4, 12), kurta); torso.position.set(.22, 1.12, 2.62); torso.castShadow = true; YOU.add(torso);
+  box(.34, .8, .26, mat(0x3a3a44), .22, .42, 2.62, YOU);
+  const head = sph(.13, skinM, .2, 1.6, 2.62, YOU, 16), hair = sph(.135, hairM, .2, 1.66, 2.64, YOU, 14); hair.scale.set(1, .75, 1);
+  YOUHEAD.push(head, hair, torso);
+  // upper arm + forearm reaching the phone
+  const seg = (a, b, r, m) => { const d = new THREE.Vector3().subVectors(b, a), o = new THREE.Mesh(new THREE.CapsuleGeometry(r, d.length(), 4, 10), m);
+    o.position.copy(a).addScaledVector(d, .5); o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()); o.castShadow = true; YOU.add(o); return o; };
+  const sh = new THREE.Vector3(.06, 1.38, 2.6), el = new THREE.Vector3(.0, 1.12, 2.42), hd = new THREE.Vector3(.03, 1.16, 2.18);
+  YOUHEAD.push(seg(sh, el, .045, kurta), seg(el, hd, .04, kurta));
+}
+// ---------- your hand + phone (foreground) ----------
+const HAND = new THREE.Group(); S.add(HAND);
+const PHONE_C = document.createElement("canvas"); PHONE_C.width = 540; PHONE_C.height = 1120; const PG = PHONE_C.getContext("2d");
+const PHONE_T = new THREE.CanvasTexture(PHONE_C); PHONE_T.colorSpace = THREE.SRGBColorSpace; PHONE_T.anisotropy = 8;
+{ const body = new THREE.Mesh(new THREE.BoxGeometry(.078, .162, .009), mat(0x15161a, { flatShading: false, roughness: .3, metalness: .4 })); body.castShadow = true; HAND.add(body);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(.072, .152), new THREE.MeshBasicMaterial({ map: PHONE_T, toneMapped: false })); scr.position.z = .0047; HAND.add(scr);
+  const palm = new THREE.Mesh(new THREE.CapsuleGeometry(.03, .05, 4, 10), mat(0xa86c47, { flatShading: false })); palm.position.set(.005, -.09, -.04); palm.rotation.z = .25; HAND.add(palm);
+  for (let i = 0; i < 3; i++) { const f = new THREE.Mesh(new THREE.CapsuleGeometry(.0075, .022, 4, 8), mat(0xa86c47, { flatShading: false })); f.position.set(-.043, -.02 - i * .024, -.002); f.rotation.z = Math.PI / 2 - .25; HAND.add(f); }   // fingers wrap the left edge
+  HAND.userData.thumb = new THREE.Mesh(new THREE.CapsuleGeometry(.0085, .03, 4, 8), mat(0xa86c47, { flatShading: false })); HAND.add(HAND.userData.thumb); }
+function drawPhone(t) {
+  const x = PG, w = 540, h = 1120;
+  x.fillStyle = "#f6f7fb"; x.fillRect(0, 0, w, h);
+  x.fillStyle = "#5b2d8c"; x.fillRect(0, 0, w, 210); x.fillStyle = "#fff"; x.font = "600 30px Figtree"; x.textAlign = "left"; x.fillText("19:42", 30, 46);
+  x.font = "800 40px Figtree"; x.textAlign = "center"; x.fillText("Paying", w / 2, 130); x.font = "600 30px Figtree"; x.fillStyle = "rgba(255,255,255,.8)"; x.fillText("Raju Tea Stall · raju@upi", w / 2, 178);
+  // avatar
+  x.fillStyle = "#e8672a"; x.beginPath(); x.arc(w / 2, 300, 62, 0, 6.283); x.fill(); x.fillStyle = "#fff"; x.font = "800 56px Figtree"; x.fillText("R", w / 2, 320);
+  x.fillStyle = "#111"; x.font = "800 150px Figtree"; x.fillText("₹10", w / 2, 560);
+  x.fillStyle = "#888"; x.font = "600 30px Figtree"; x.fillText("Chai ☕", w / 2, 620);
+  const paid = t >= T.paid;
+  if (!paid) { const press = t > T.tap ? Math.exp(-(t - T.tap) * 10) : 0; x.save(); x.translate(w / 2, 900); x.scale(1 - press * .05, 1 - press * .05);
+    x.fillStyle = "#5b2d8c"; x.beginPath(); x.roundRect(-210, -60, 420, 120, 60); x.fill(); x.fillStyle = "#fff"; x.font = "800 48px Figtree"; x.fillText("Pay ₹10", 0, 16); x.restore();
+    if (t > T.tap) { x.strokeStyle = "rgba(91,45,140,.5)"; x.lineWidth = 6; const k = prog(t, T.tap, T.paid); x.beginPath(); x.arc(w / 2, 900, 30 + k * 200, 0, 6.283); x.stroke(); }
+  } else { // success
+    const k = eob(prog(t, T.paid, T.paid + .45)); x.fillStyle = "#e9f7ee"; x.fillRect(0, 210, w, h - 210);
+    x.save(); x.translate(w / 2, 450); x.scale(k, k); x.fillStyle = "#1fa463"; x.beginPath(); x.arc(0, 0, 120, 0, 6.283); x.fill();
+    x.strokeStyle = "#fff"; x.lineWidth = 22; x.lineCap = "round"; x.lineJoin = "round"; x.beginPath(); const c = prog(t, T.paid + .1, T.paid + .5); x.moveTo(-50, 0); x.lineTo(-50 + 35 * clamp(c * 2), 35 * clamp(c * 2)); if (c > .5) x.lineTo(-15 + 75 * (c - .5) * 2, 35 - 85 * (c - .5) * 2); x.stroke(); x.restore();
+    x.fillStyle = "#111"; x.font = "800 64px Figtree"; x.textAlign = "center"; x.fillText("₹10 paid", w / 2, 680); x.fillStyle = "#555"; x.font = "600 30px Figtree"; x.fillText("to Raju Tea Stall", w / 2, 730);
+    x.fillStyle = "#999"; x.font = "600 26px Figtree"; x.fillText("UPI Ref 4285 1937 0062", w / 2, 790);
+  }
+  PHONE_T.needsUpdate = true;
+}
+
+// ---------- timeline ----------
+const T = { tap: 1.15, paid: 1.55, pull: 4.2, freeze: 7.9 };
+const CAMK = [   // camera: position (px,py,pz) + look target (lx,ly,lz) + fov
+  { t: 0, px: .04, py: 1.47, pz: 2.55, lx: .03, ly: 1.25, lz: 2.11, fov: 36 },
+  { t: 4.2, px: .05, py: 1.47, pz: 2.66, lx: .03, ly: 1.25, lz: 2.1, fov: 36, hold: 1 },
+  { t: 6.6, px: 2.1, py: 1.55, pz: 7.4, lx: -.2, ly: 2.15, lz: 0, fov: 40 },
+  { t: 8.7, px: 1.8, py: 1.6, pz: 6.9, lx: -.2, ly: 2.2, lz: 0, fov: 40 },
+  { t: 10.6, px: 1.5, py: 1.65, pz: 6.5, lx: -.2, ly: 2.25, lz: 0, fov: 41 },
+];
+function frozenTime(t) { return t < T.freeze ? t : T.freeze + (t - T.freeze) * Math.exp(-(t - T.freeze) * 6) * .3; }   // world clock eases to a stop
+
+function setWorld(t) {
+  const wt = frozenTime(t);                                  // the world's own clock (stops at the freeze)
+  // camera
+  const c = track(CAMK, t); CAM.position.set(c.px, c.py, c.pz); CAM.fov = c.fov; CAM.updateProjectionMatrix(); CAM.lookAt(c.lx, c.ly, c.lz);
+  // hand + phone: held up in front of the stall, slight natural sway
+  const sway = Math.sin(wt * 1.3) * .004;
+  HAND.position.set(.03 + sway, 1.22 + Math.sin(wt * 1.7) * .003, 2.12); HAND.rotation.set(-.35, .06, .03);
+  const th = HAND.userData.thumb, near = eo(prog(t, T.tap - .6, T.tap - .1)) * (1 - eio(prog(t, T.tap + .2, T.tap + .7))), tapK = Math.sin(clamp((t - T.tap + .15) / .3) * Math.PI);
+  th.position.set(lerp(.06, .012, near), lerp(-.1, -.048, near), .008 + (1 - tapK) * .008); th.rotation.set(.2, 0, .7); th.visible = near > .02;
+  // your head/body fade in once the camera leaves your eyes
+  const away = clamp((CAM.position.distanceTo(new THREE.Vector3(.2, 1.6, 2.62)) - .45) / .5);
+  YOUHEAD.forEach(m => { m.material.opacity = away; m.visible = away > .02; });
+  drawPhone(t);
+  // Raju pours chai: kettle tilts up and down on a loop
+  const pour = .5 + .5 * Math.sin(wt * 1.6);
+  RAJU.userData.armR.rotation.set(-1.25 - pour * .12, 0, -.55); RAJU.userData.armL.rotation.set(-1.05, 0, .35);
+  RAJU.userData.head.rotation.y = Math.sin(wt * .7) * .2;
+  KETTLE.position.set(-.08, 1.36 + pour * .06, -.02); KETTLE.rotation.z = -pour * .5;
+  POUR.visible = pour > .55; POUR.scale.y = .6 + pour * .5;
+  // steam rises from the kettle and the glasses
+  PUFFS.forEach((p, i) => { const per = 2.4, ph = ((wt + i * per / PUFFS.length) % per) / per, src = i % 3 === 0 ? [-.4, 1.6, -.05] : [.2 + (i % 5) * .1, 1.22, .18];
+    p.position.set(src[0] + Math.sin(ph * 6 + i) * .05, src[1] + ph * .55, src[2]); const s = .05 + ph * .2; p.scale.set(s, s, s); p.material.opacity = .45 * Math.sin(ph * Math.PI); });
+  // bird glides across the street, flapping
+  const bk = (wt * .9) % 14; BIRD.position.set(-7 + bk * 1.0, 3.6 + Math.sin(bk * .9) * .2, 2.2); BIRD.rotation.y = 0;
+  const fl = Math.sin(wt * 18) * .7; BIRD.userData.w1.rotation.x = fl; BIRD.userData.w2.rotation.x = -fl;
+  // string lights twinkle
+  BULBS.forEach((b, i) => b.material.emissiveIntensity = 1.6 + Math.sin(wt * 3 + i) * .6);
+}
+
+// ---------- 2D type layer ----------
+let BOXES = [];
+const F = { body: (s, w = 800) => `${w} ${s}px Figtree`, disp: s => `800 ${s}px "Bricolage Grotesque"`, serif: s => `italic ${s}px "Instrument Serif"` };
+function lum(c) { const l = v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; return .2126 * l(c[0]) + .7152 * l(c[1]) + .0722 * l(c[2]); }
+function contrastUnder(x, y, w, h) { const X = clamp(x | 0, 0, W - 1), Y = clamp(y | 0, 0, H - 1), d = g.getImageData(X, Y, clamp(w | 0, 1, W - X), clamp(h | 0, 1, H - Y)).data, L = [];
+  for (let i = 0; i < d.length; i += 44) L.push(lum([d[i], d[i + 1], d[i + 2]])); L.sort((a, b) => a - b); const bg = L[Math.floor(L.length * .9)]; return 1.05 / (bg + .05); }
+// white type with a soft dark glow; words pop in one by one
+function words(id, text, font, size, y, t, t0, t1, opts = {}) {
+  if (t < t0 || t > t1) return; const out = eio(prog(t, t1 - .35, t1));
+  g.save(); g.font = font; g.textBaseline = "alphabetic"; g.textAlign = "left"; g.letterSpacing = (opts.ls ?? -1) + "px";
+  const parts = text.split(" "), sp = g.measureText(" ").width, ws = parts.map(p => g.measureText(p).width), tw = ws.reduce((a, b) => a + b, 0) + sp * (parts.length - 1);
+  let x = 540 - tw / 2; const y0 = y - size * .78;
+  g.save(); g.filter = `blur(${Math.max(10, size * .12)}px)`; g.fillStyle = "rgba(8,6,20,1)"; g.globalAlpha = .85 * (1 - out) * eo(prog(t, t0, t0 + .4)); for (let k = 0; k < 4; k++) g.fillText(text, x, y); g.restore();
+  const contrast = contrastUnder(x, y0, tw, size);
+  parts.forEach((p, i) => { const k = prog(t, t0 + i * (opts.stagger ?? .12), t0 + i * (opts.stagger ?? .12) + .35), s = lerp(.6, 1, eob(k));
+    g.save(); g.globalAlpha = clamp(k * 2) * (1 - out); g.fillStyle = opts.color || "#fff"; g.translate(x + ws[i] / 2, y - size * .3 - out * 40); g.scale(s, s); g.translate(-(x + ws[i] / 2), -(y - size * .3)); g.fillText(p, x, y); g.restore(); x += ws[i] + sp; });
+  g.restore();
+  const allIn = t0 + (parts.length - 1) * (opts.stagger ?? .12) + .35;
+  BOXES.push({ id, group: opts.group, words: parts.length, x: 540 - tw / 2, y: y0, w: tw, h: size, a: (1 - out) * eo(prog(t, t0, t0 + .4)), read: out > .02 || t < allIn ? 0 : 1, contrast, size });
+}
+function hud(t) { // time-freeze clock
+  const a = win(t, T.freeze + .1, DUR + 1, .4, .1); if (a <= 0) return;
+  g.save(); g.globalAlpha = a; g.font = F.body(42, 800); const label = "TIME  0.00 s", tw = g.measureText(label).width + 110, x = 540 - tw / 2, y = 300;
+  g.fillStyle = "rgba(10,14,30,.82)"; g.beginPath(); g.roundRect(x, y, tw, 84, 42); g.fill(); g.fillStyle = "#7ad7ff"; g.beginPath(); g.arc(x + 42, y + 42, 10, 0, 6.283); g.fill();
+  g.fillStyle = "#fff"; g.textBaseline = "middle"; g.textAlign = "left"; g.fillText(label, x + 70, y + 44); g.restore();
+  BOXES.push({ id: "hud", x, y, w: tw, h: 84, a, read: a, contrast: 15, size: 42 });
+}
+
+function seek(t) {
+  BOXES = [];
+  setWorld(t);
+  R.render(S, CAM);
+  // freeze grade: colour drains to a cool tone as time stops, with a ripple
+  const fz = eo(prog(t, T.freeze, T.freeze + .6));
+  g.filter = fz > .01 ? `saturate(${1 - .55 * fz}) brightness(${1 - .08 * fz}) contrast(${1 + .08 * fz})` : "none";
+  g.drawImage(R.domElement, 0, 0); g.filter = "none";
+  if (fz > .01) { g.fillStyle = `rgba(40,80,170,${.16 * fz})`; g.fillRect(0, 0, W, H);
+    const rk = prog(t, T.freeze, T.freeze + .9); if (rk < 1) { g.strokeStyle = `rgba(190,230,255,${.6 * (1 - rk)})`; g.lineWidth = 10 * (1 - rk) + 2; g.beginPath(); g.arc(540, 980, rk * 1300, 0, 6.283); g.stroke(); } }
+  // type
+  // the phone says "₹10" itself — the only line is the payoff of the tap
+  words("t2", "That took 2 seconds.", F.disp(92), 92, 400, t, T.paid + .15, T.pull + .15, { stagger: .07 });
+  words("t3", "What really happened?", F.body(78), 78, 450, t, T.pull + 1.15, T.freeze - .05, { stagger: .1 });
+  words("t4", "Let's freeze time.", F.disp(100), 100, 540, t, T.freeze + .35, DUR + 1, { stagger: .16 });
+  hud(t);
+  // vignette + grain-free (3D is clean); fade in
+  const v = g.createRadialGradient(540, 960, 600, 540, 960, 1300); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.35)"); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  const f = 1 - prog(t, 0, .2); if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); }
+  return BOXES.map(b => ({ ...b, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h), a: +b.a.toFixed(2), contrast: +b.contrast.toFixed(1) }));
+}
+window.DUR = DUR; window.SAFE = SAFE; window.T = T;
+window.ready = (async () => { await Promise.all([F.body(60), F.body(30, 600), F.disp(100), F.serif(100)].map(f => document.fonts.load(f)));
+  window.seek = seek; window.CUES = [{ t: T.tap, s: "tap" }, { t: T.paid, s: "ding" }, { t: T.freeze, s: "freeze" }]; seek(0); return { ok: true }; })();
+</script>
+</body>
+</html>
