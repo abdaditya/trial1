@@ -643,7 +643,7 @@ function panelIcon(x, y, w, h, col, dash, t) {
 }
 // S13 — 33% of new solar on temporary links: 100 panels on a paper card
 function sDonut(t) {
-  creamBg(); const CW = 820, CH = 960, TOP = 540, k = eo(prog(t, 73.2, 73.95)), push = lerp(1, 1.04, prog(t, 73.4, 78.6));
+  creamBg(); const CW = 820, CH = 960, TOP = 540, k = eo(prog(t, 73.62, 74.3)), push = lerp(1, 1.04, prog(t, 73.4, 78.6));
   g.save(); g.translate(CX, 1020); g.scale(push, push); g.translate(-CX, -1020);
   const close = paper(CX, TOP, CW, CH, lerp(-2.2, -1.2, k), k, k);
   g.textAlign = "left"; g.font = "700 32px Inter"; g.letterSpacing = "5px"; g.fillStyle = "#9A3F14"; g.fillText("NEW SOLAR · HOW IT CONNECTS", -CW / 2 + 60, -CH / 2 + 84);
@@ -661,7 +661,7 @@ function sDonut(t) {
   g.fillStyle = "#F08C32"; g.fillRect(gx, ly, 34, 26); g.font = "700 36px Inter"; g.letterSpacing = "2px"; g.fillStyle = "#2a2420"; g.fillText("TEMPORARY LINKS", gx + 50, ly + 25);
   g.globalAlpha = k; stamp(CW / 2 - 190, -CH / 2 + 205, "TGNA", prog(t, ws(225) - .08, ws(225) + .3), "#C0392B", 70, -9);
   close(); g.restore();
-  regEl("card", CX - CW / 2, TOP, CW, CH, t > 73.14 ? k : 0);
+  regEl("card", CX - CW / 2, TOP, CW, CH, t > 73.58 ? k : 0);
 }
 // S14 — noon: about half held back (same paper world)
 function sNoon(t) {
@@ -724,12 +724,12 @@ const CAPS = [
   { id: "c7", i0: 52, i1: 54, t1: 19.9, size: 72, st: { sun: { it: 1, hl: "or" } } },
   { id: "c8", i0: 59, i1: 66, t1: 23.3, st: { not: { it: 1, hl: "or" } } },
   { id: "c11", i0: 87, i1: 93, t1: 31.1, st: { pipeline: { it: 1, hl: "or" } } },
-  { id: "c13", i0: 103, i1: 109, t1: 36.5, size: 70, st: { transmission: { hl: "lav" } } },
+  { id: "c13", i0: 103, i1: 109, t1: ws(110) - .08, size: 70, st: { transmission: { hl: "lav" } } },
   { id: "c14", i0: 110, i1: 117, t1: ws(118) - .1, ink: true, st: { "12": { it: 1, hl: "or" }, months: { it: 1, hl: "or" } } },
   { id: "c15", i0: 118, i1: 125, t1: 41.75, ink: true, st: { three: { it: 1, hl: "red" }, five: { it: 1, hl: "red" }, years: { it: 1, hl: "red" } } },
   { id: "q1", i0: 148, i1: 158, t1: 53.0, center: true, y: 960, size: 84, st: { full: { it: 1, hl: "or" }, not: { it: 1, hl: "or" }, "there?": { it: 1, hl: "or" } } },
   { id: "c21", i0: 168, i1: 171, t1: 58.7, size: 86, st: { stop: { it: 1, hl: "red" } } },
-  { id: "q2", i0: 210, i1: 214, t1: 73.12, center: true, y: 960, size: 96, st: { "managing?": { it: 1, hl: "or" } } },
+  { id: "q2", i0: 210, i1: 214, t1: 73.55, center: true, y: 960, size: 96, st: { "managing?": { it: 1, hl: "or" } } },
   { id: "c28", i0: 244, i1: 250, t1: ws(251) - .1, st: { fast: { it: 1, hl: "or" } } },
   { id: "c29", i0: 251, i1: 260, t1: 88.85, st: { catching: { hl: "lav" }, "up": { hl: "lav" } } },
 ];
