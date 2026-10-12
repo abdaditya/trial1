@@ -1,0 +1,674 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Playfair"; src: url(fonts/PlayfairDisplay-800.woff2) format("woff2"); font-weight: 400 900; font-style: normal; }
+@font-face { font-family: "Playfair"; src: url(fonts/PlayfairDisplay-800i.woff2) format("woff2"); font-weight: 400 900; font-style: italic; }
+@font-face { font-family: "Inter"; src: url(fonts/Inter-700.woff2) format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Oswald"; src: url(fonts/Oswald-600.woff2) format("woff2"); font-weight: 200 700; }
+html, body { margin: 0; background: #000; }
+canvas { display: block; }
+</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script src="lib/three.min.js"></script>
+<script src="audio/words.js"></script>
+<script>
+// "The clock inside the atom" — voiced reel, 1080x1920, deterministic: window.seek(t) draws frame t (t = the voice's own clock).
+const W = 1080, H = 1920, DUR = 99.54;
+const SAFE = { x0: 90, x1: 950, y0: 250, y1: 1540 }, CX = 520;   // playbook danger zones; text centres on x 520
+const MAIN = document.getElementById("c"), gm = MAIN.getContext("2d", { willReadFrequently: true });
+let g = gm;
+const mk = () => { const c = document.createElement("canvas"); c.width = W; c.height = H; return c; };
+const bufA = mk(), bufB = mk(), ga = bufA.getContext("2d"), gb = bufB.getContext("2d");
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lerp = (a, b, k) => a + (b - a) * k;
+const prog = (t, a, b) => clamp((t - a) / (b - a)), eo = k => 1 - (1 - k) ** 3, eio = k => k < .5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
+const eob = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (k - 1) ** 3 + c1 * (k - 1) ** 2; };
+const win = (t, a, b, fi = .3, fo = .3) => Math.min(eo(prog(t, a, a + fi)), 1 - eio(prog(t, b - fo, b)));
+const R = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(42);
+function track(keys, t) {   // keys: [[t, [v...]], ...] eased between keys (slow-in / slow-out)
+  if (t <= keys[0][0]) return keys[0][1].slice(); const L = keys[keys.length - 1]; if (t >= L[0]) return L[1].slice();
+  for (let i = 0; i < keys.length - 1; i++) { const [t0, a] = keys[i], [t1, b] = keys[i + 1]; if (t <= t1) { const k = eio(prog(t, t0, t1)); return a.map((v, j) => lerp(v, b[j], k)); } }
+}
+const WD = window.WD, ws = i => WD[i][1];
+const norm = s => s.toLowerCase().replace(/[^a-z0-9 ]/g, "");
+function ix(phrase, nth = 0) { const p = norm(phrase).split(" "); let seen = 0; for (let i = 0; i + p.length <= WD.length; i++) { if (p.every((w, k) => norm(WD[i + k][0]) === w)) { if (seen++ === nth) return i; } } throw new Error("phrase not found: " + phrase); }
+const tw = (phrase, nth = 0) => ws(ix(phrase, nth));       // start time of a phrase in the voice
+const te = (phrase, nth = 0) => { const p = norm(phrase).split(" "), i = ix(phrase, nth); return WD[i + p.length - 1][2]; };   // end time of its last word
+
+// ---------------- assets ----------------
+const IM = {}; const loads = [];
+for (const n of ["city", "dp"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
+const grain = mk(); grain.width = grain.height = 512;
+{ const gg = grain.getContext("2d"), d = gg.createImageData(512, 512); for (let i = 0; i < d.data.length; i += 4) { const v = R() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } gg.putImageData(d, 0, 0); }
+
+// ---------------- 2D helpers ----------------
+function lum(p) { const l = v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; return .2126 * l(p[0]) + .7152 * l(p[1]) + .0722 * l(p[2]); }
+function contrastUnder(x, y, w, h, ink = false) { const X = clamp(x | 0, 0, W - 1), Y = clamp(y | 0, 0, H - 1), d = gm.getImageData(X, Y, clamp(w | 0, 1, W - X), clamp(h | 0, 1, H - Y)).data, L = [];
+  for (let i = 0; i < d.length; i += 44) L.push(lum([d[i], d[i + 1], d[i + 2]])); L.sort((a, b) => a - b);
+  return ink ? (L[Math.floor(L.length * .1)] + .05) / (.0065 + .05) : 1.05 / (L[Math.floor(L.length * .9)] + .05); }
+let LAST = null, GOLDL = null, GOLD1 = null;
+function photo(im, fx, fy, z, filter, dx = 0) {
+  if (!im.naturalWidth) { g.fillStyle = "#1a1820"; g.fillRect(0, 0, W, H); return (u, v) => [u * W, v * H]; }
+  const s = Math.max(W / im.width, H / im.height) * z, iw = im.width * s, ih = im.height * s;
+  let x = W / 2 - fx * iw + dx, y = H / 2 - fy * ih; x = clamp(x, W - iw, 0); y = clamp(y, H - ih, 0);
+  g.save(); g.filter = filter; g.drawImage(im, x, y, iw, ih); g.restore(); LAST = { x, y, iw, ih };
+  return (u, v) => [x + u * iw, y + v * ih];
+}
+function shade(a = .8, to = 820, bottom = .55) {
+  const gr = g.createLinearGradient(0, 0, 0, to); gr.addColorStop(0, `rgba(10,9,14,${a})`); gr.addColorStop(.55, `rgba(10,9,14,${a * .72})`); gr.addColorStop(1, "rgba(10,9,14,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, W, to);
+  const gb2 = g.createLinearGradient(0, H - 480, 0, H); gb2.addColorStop(0, "rgba(10,9,14,0)"); gb2.addColorStop(1, `rgba(10,9,14,${bottom})`); g.fillStyle = gb2; g.fillRect(0, H - 480, W, 480);
+}
+function vignette(a = .45, col = "0,0,0") { const r = g.createRadialGradient(W / 2, H * .55, H * .32, W / 2, H * .55, H * .85); r.addColorStop(0, `rgba(${col},0)`); r.addColorStop(1, `rgba(${col},${a})`); g.fillStyle = r; g.fillRect(0, 0, W, H); }
+function darkBg(warm = 0) {
+  g.fillStyle = "#0b0a10"; g.fillRect(0, 0, W, H);
+  const r = g.createRadialGradient(W / 2, H * .52, 0, W / 2, H * .52, H * .7); r.addColorStop(0, `rgba(${lerp(40, 70, warm) | 0},${lerp(36, 44, warm) | 0},${lerp(58, 40, warm) | 0},.9)`); r.addColorStop(1, "rgba(11,10,16,0)");
+  g.fillStyle = r; g.fillRect(0, 0, W, H);
+}
+function creamBg() { g.fillStyle = "#EEE8DC"; g.fillRect(0, 0, W, H); const r = g.createRadialGradient(W / 2, H * .45, 0, W / 2, H * .45, H * .8); r.addColorStop(0, "rgba(255,252,244,.8)"); r.addColorStop(1, "rgba(214,204,186,.6)"); g.fillStyle = r; g.fillRect(0, 0, W, H); }
+function txt(s, x, y, font, col, align = "center", ls = 0) { g.save(); g.font = font; g.fillStyle = col; g.textAlign = align; g.letterSpacing = ls + "px"; g.fillText(s, x, y); const w = g.measureText(s).width; g.restore(); return w; }
+function rrect(x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+
+let BOXES = [], SHAKE = [0, 0];
+const reg = (id, x, y, w, h, a, size, contrast = 12, words = 0, group) => BOXES.push({ id, group, words, x, y, w, h, a, read: a, contrast, size });
+const regEl = (id, x, y, w, h, a, group) => a > .02 && BOXES.push({ id, group, el: 1, x, y, w, h, a, read: 0 });
+
+// ---------------- captions (synced to the voice) ----------------
+// tokens like "-of", ",133", ".4", "%" are glued to the word before
+function tokens(i0, i1) { const out = []; for (let i = i0; i <= i1; i++) { const w = WD[i][0]; if (/^[-,.%]/.test(w) && out.length) out[out.length - 1][0] += w; else out.push([w, WD[i][1]]); } return out; }
+const key = w => w.toLowerCase().replace(/[^a-z0-9%.,-]/g, "").replace(/[.,]$/, "");
+// one caption: words appear as spoken, wrapped into balanced lines
+function caption(t, c) {
+  const { id, i0, i1, t1, y = 430, size = 64, ink = false, st = {}, center = false } = c, t0 = ws(i0) - .05;
+  if (t < t0 || t > t1) return;
+  const raw = tokens(i0, i1).map(([w, tt]) => [w, tt]);
+  const out = eio(prog(t, t1 - .28, t1)), toks = raw.map(([w, tt]) => [w, tt, st[key(w)] || {}]);
+  const fontOf = s => `${s.it ? "italic " : ""}800 ${size}px Playfair`, sp = size * .26, maxW = 800;
+  g = gm; g.save();
+  const wid = toks.map(([w, , s]) => { g.font = fontOf(s); return g.measureText(w).width; });
+  // wrap: fewest lines that fit maxW, then balance the line widths
+  const wrap = lim => { const L = []; let cur = [], cw = 0; toks.forEach((tk, i) => { const add = (cur.length ? sp : 0) + wid[i]; if (cur.length && cw + add > lim) { L.push(cur); cur = []; cw = 0; } cur.push(i); cw += (cur.length > 1 ? sp : 0) + wid[i]; }); L.push(cur); return L; };
+  let lines = wrap(maxW); const nL = lines.length; for (let lim = maxW; lim > 200; lim -= 10) { const L2 = wrap(lim); if (L2.length > nL) break; lines = L2; }
+  const lh = size * 1.14, yTop = center ? y - (lines.length * lh) / 2 + size * .8 : y;
+  lines.forEach((L, li) => {
+    const lw = L.reduce((a, i) => a + wid[i], 0) + sp * (L.length - 1); let x = CX - lw / 2; const yy = yTop + li * lh, x0 = x, y0 = yy - size * .8, firstT = toks[L[0]][1];
+    const ga0 = eo(prog(t, firstT - .05, firstT + .3)) * (1 - out);
+    if (!ink) { g.save(); g.filter = `blur(${size * .32}px)`; g.fillStyle = "rgba(8,6,12,1)"; g.globalAlpha = .78 * ga0; g.fillRect(x0 - size * .2, y0 - size * .05, lw + size * .4, size * 1.15); g.restore(); }
+    const contrast = contrastUnder(x0, y0, lw, size, ink);
+    L.forEach(i => {
+      const [w, tt, s] = toks[i], k = eo(prog(t, tt - .05, tt + .25)); if (k <= 0) { x += wid[i] + sp; return; }
+      g.save(); g.font = fontOf(s); g.globalAlpha = k * (1 - out); g.textBaseline = "alphabetic";
+      const hk = s.hl === "lav" ? eio(prog(t, tt + .05, tt + .4)) : 0;
+      if (hk > 0) { g.fillStyle = "#B7A3F6"; g.fillRect(x - 8, yy - size * .74, (wid[i] + 16) * hk, size * .92); }
+      g.fillStyle = hk > .5 ? "#120d1e" : s.hl === "or" ? (ink ? "#C2410C" : "#FFA24D") : s.hl === "red" ? (ink ? "#B91C1C" : "#FF5A4E") : ink ? "#16121c" : "#F5EFE3";
+      if (k < 1) g.filter = `blur(${(1 - k) * 6}px)`;
+      g.fillText(w, x, yy + (1 - k) * 16 - out * 20); g.restore(); x += wid[i] + sp;
+    });
+    BOXES.push({ id: `${id}:${li}`, group: id, words: L.length, x: x0, y: y0, w: lw, h: size, a: ga0, read: t >= firstT + .25 && out < .02 ? 1 : 0, contrast, size });
+  });
+  g.restore();
+}
+// small uppercase kicker (gold on dark, rust on cream)
+function kicker(t, s, t0, t1, y = 318, cream = false) {
+  const a = win(t, t0, t1, .35, .3); if (a <= 0) return;
+  g = gm; g.save(); g.font = "700 30px Inter"; g.letterSpacing = "5px"; const tw = g.measureText(s).width, x = CX - tw / 2 + 14;
+  g.globalAlpha = a; g.fillStyle = cream ? "#B4501F" : "#F2B544"; g.beginPath(); g.arc(x - 26, y - 10, 7, 0, 7); g.fill();
+  g.fillStyle = cream ? "#9A3F14" : "#F2C46A"; g.fillText(s, x, y - (1 - a) * 10); g.restore();
+  reg("kick:" + s, x - 40, y - 26, tw + 40, 34, a, 36, 9);
+}
+
+// ======================================================================
+// 3D (three.js) — only for the Earth, the dam, the land plots and the stop switch
+// ======================================================================
+const GLC = document.createElement("canvas"); GLC.width = W; GLC.height = H;
+const RND = new THREE.WebGLRenderer({ canvas: GLC, antialias: true, preserveDrawingBuffer: true });
+RND.setSize(W, H, false); RND.outputColorSpace = THREE.SRGBColorSpace; RND.toneMapping = THREE.ACESFilmicToneMapping; RND.toneMappingExposure = 1.05;
+const CAM = new THREE.PerspectiveCamera(35, W / H, .01, 400);
+const PMREM = new THREE.PMREMGenerator(RND);
+const TL = new THREE.TextureLoader(); const tex = (u, srgb = true) => new Promise(r => TL.load(u, x => { if (srgb) x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; r(x); }, undefined, () => r(null)));
+function draw3D(scene, bg) { RND.setClearColor(bg ?? 0x000000, 1); RND.render(scene, CAM); g.drawImage(GLC, 0, 0); }
+function screenOf(v) { const p = v.clone().project(CAM); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; }
+function glowTex(r, g2, b) { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, `rgba(${r},${g2},${b},1)`); gr.addColorStop(.25, `rgba(${r},${g2},${b},.55)`); gr.addColorStop(1, `rgba(${r},${g2},${b},0)`); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+const GOLD = glowTex(255, 196, 92), WARM = glowTex(255, 214, 160), REDG = glowTex(255, 80, 60);
+
+// ======================================================================
+// 3D Earth (NASA Blue Marble imagery, no borders): GPS beat, the Vienna/Beijing race, the finale
+// ======================================================================
+const EARTH = new THREE.Scene(); let EARTH_MAT; const E = {};
+const ll2v = (lat, lon, r = 1) => { const ph = (lon + 180) * Math.PI / 180, th = (90 - lat) * Math.PI / 180; return new THREE.Vector3(-Math.cos(ph) * Math.sin(th) * r, Math.cos(th) * r, Math.sin(ph) * Math.sin(th) * r); };
+const MUMBAI = [19.08, 72.88], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
+const spriteMat = (map, o = 1, blend = true) => new THREE.SpriteMaterial({ map, transparent: true, opacity: o, depthWrite: false, depthTest: false, blending: blend ? THREE.AdditiveBlending : THREE.NormalBlending });
+function pinTexture(col = "#FFC55C") { const c = document.createElement("canvas"); c.width = 128; c.height = 160; const x = c.getContext("2d");
+  x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 10; x.fillStyle = col; x.beginPath(); x.arc(64, 58, 44, Math.PI * .85, Math.PI * .15, false); x.lineTo(64, 148); x.closePath(); x.fill(); x.shadowColor = "transparent";
+  x.fillStyle = "#1a1228"; x.beginPath(); x.arc(64, 58, 17, 0, 7); x.fill(); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function ringTexture() { const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d"), gr = x.createRadialGradient(128, 128, 90, 128, 128, 126);
+  gr.addColorStop(0, "rgba(255,200,110,0)"); gr.addColorStop(.55, "rgba(255,214,140,.95)"); gr.addColorStop(1, "rgba(255,200,110,0)"); x.fillStyle = gr; x.fillRect(0, 0, 256, 256); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function makeSat() {
+  const g3 = new THREE.Group(), gold = new THREE.MeshStandardMaterial({ color: 0xdcae4a, metalness: .85, roughness: .32 }), panel = new THREE.MeshStandardMaterial({ color: 0x1f3f86, metalness: .5, roughness: .3, emissive: 0x0b1c46 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(.07, .07, .1), gold); g3.add(body);
+  for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.2, .004, .085), panel); p.position.x = sx * .15; g3.add(p); const arm = new THREE.Mesh(new THREE.BoxGeometry(.08, .006, .006), new THREE.MeshStandardMaterial({ color: 0xbfc6cf })); arm.position.x = sx * .06; g3.add(arm); }
+  const dish = new THREE.Mesh(new THREE.ConeGeometry(.03, .025, 20, 1, true), new THREE.MeshStandardMaterial({ color: 0xe6e9ee, metalness: .6, roughness: .3, side: THREE.DoubleSide })); dish.rotation.x = Math.PI; dish.position.set(0, -.05, 0); g3.add(dish);
+  const glow = new THREE.Sprite(spriteMat(GOLD, .0)); glow.scale.setScalar(.2); glow.position.set(0, 0, .06); g3.add(glow); g3.userData.glow = glow;
+  g3.scale.setScalar(1.7); return g3;
+}
+function cyl(scene, col, r = .0035) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 8), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })); scene.add(m); return m; }
+function setCyl(m, a, b) { const d = new THREE.Vector3().subVectors(b, a), len = d.length(); m.position.copy(a).addScaledVector(d, .5); m.scale.set(1, Math.max(len, 1e-4), 1); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()); }
+async function buildEarth() {
+  const [day, night, hi] = await Promise.all([tex("img/earth_bm.jpg"), tex("img/earth_night.jpg"), tex("img/india_bm.jpg")]);
+  EARTH_MAT = new THREE.ShaderMaterial({ uniforms: { day: { value: day }, night: { value: night }, hi: { value: hi }, sun: { value: new THREE.Vector3(.4, .5, 1).normalize() }, nightAmt: { value: .5 }, dayAmt: { value: .9 } },
+    vertexShader: `varying vec2 vUv; varying vec3 vN; void main(){ vUv=uv; vN=normalize(mat3(modelMatrix)*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader: `uniform sampler2D day,night,hi; uniform vec3 sun; uniform float nightAmt,dayAmt; varying vec2 vUv; varying vec3 vN;
+      void main(){ vec3 d=texture2D(day,vUv).rgb;
+        vec2 h=vec2((vUv.x*360.0-180.0-58.0)/42.0,(vUv.y*180.0-90.0-2.0)/38.0);   // NASA imagery only, 120 px/degree over India
+        float e=smoothstep(0.0,.04,h.x)*smoothstep(0.0,.04,1.0-h.x)*smoothstep(0.0,.04,h.y)*smoothstep(0.0,.04,1.0-h.y);
+        if(e>0.0) d=mix(d,texture2D(hi,clamp(h,0.0,1.0)).rgb,e);
+        vec3 n=texture2D(night,vUv).rgb; float l=dot(normalize(vN),normalize(sun)); float dl=smoothstep(-.2,.45,l);
+        vec3 col=d*(.18+1.05*dl)*dayAmt + n*vec3(1.0,.78,.5)*nightAmt*2.2*(1.15-.55*dl); gl_FragColor=vec4(col,1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }` });
+  EARTH.add(new THREE.Mesh(new THREE.SphereGeometry(1, 160, 120), EARTH_MAT));
+  EARTH.add(new THREE.Mesh(new THREE.SphereGeometry(1.07, 96, 72), new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    vertexShader: `varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader: `varying vec3 vN; void main(){ float i=pow(.72-dot(vN,vec3(0,0,1.0)),3.0); gl_FragColor=vec4(.42,.66,1.0,1.0)*i*1.4; }` })));
+  const sg = new THREE.BufferGeometry(), sp = []; for (let i = 0; i < 2600; i++) { const v = new THREE.Vector3(R() - .5, R() - .5, R() - .5).normalize().multiplyScalar(60 + R() * 40); sp.push(v.x, v.y, v.z); }
+  sg.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3)); EARTH.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xcfd6ff, size: .16, transparent: true, opacity: .75 })));
+  EARTH.add(new THREE.AmbientLight(0xb8c4ff, .7)); const sun = new THREE.DirectionalLight(0xfff0d8, 2.4); sun.position.set(6, 4, 8); EARTH.add(sun);
+  // satellites: A is near the phone, B is far; both orbit slowly
+  E.A = makeSat(); E.B = makeSat(); EARTH.add(E.A, E.B);
+  const pt = pinTexture(), rt = ringTexture();
+  E.pin = new THREE.Sprite(spriteMat(pt, 1, false)); E.pin.center.set(.5, .05); E.pin.scale.set(.11, .14, 1); E.pin.position.copy(ll2v(...MUMBAI, 1.006)); EARTH.add(E.pin);
+  E.pinRing = [0, 1].map(() => { const s = new THREE.Sprite(spriteMat(rt, 0)); s.position.copy(ll2v(...MUMBAI, 1.004)); EARTH.add(s); return s; });
+  E.ripple = [0, 1].map(() => { const s = new THREE.Sprite(spriteMat(rt, 0)); EARTH.add(s); return s; });
+  E.beamA = cyl(EARTH, 0xffc35c); E.beamB = cyl(EARTH, 0xffc35c);
+  E.pkA = new THREE.Sprite(spriteMat(GOLD, 0)); E.pkB = new THREE.Sprite(spriteMat(GOLD, 0)); E.pkA.scale.setScalar(.2); E.pkB.scale.setScalar(.2); EARTH.add(E.pkA, E.pkB);
+  // the two labs
+  E.vie = new THREE.Sprite(spriteMat(pinTexture("#B7A3F6"), 0, false)); E.bei = new THREE.Sprite(spriteMat(pinTexture("#FFC55C"), 0, false));
+  for (const [s, ll] of [[E.vie, VIENNA], [E.bei, BEIJING]]) { s.center.set(.5, .05); s.scale.set(.11, .14, 1); s.position.copy(ll2v(...ll, 1.006)); EARTH.add(s); }
+  E.vieRing = new THREE.Sprite(spriteMat(rt, 0)); E.beiRing = new THREE.Sprite(spriteMat(rt, 0)); E.vieRing.position.copy(ll2v(...VIENNA, 1.004)); E.beiRing.position.copy(ll2v(...BEIJING, 1.004)); EARTH.add(E.vieRing, E.beiRing);
+}
+function earthCam(lat, lon, d, offY = -160, fov = 35) { CAM.fov = fov; CAM.position.copy(ll2v(lat, lon, d)); CAM.up.set(0, 1, 0); CAM.lookAt(0, 0, 0); CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, offY, W, H); CAM.updateProjectionMatrix(); }
+function lab3(text, v, dx, dy, a, id, col = "#F7D58A", fs = 36) {   // pill label pinned to a 3D point, kept inside the safe zone
+  if (a <= 0) return; const [x, y] = screenOf(v); g.save(); g.globalAlpha = a; g.font = `700 ${fs}px Inter`; g.letterSpacing = "3px"; const tw = g.measureText(text).width + 3;
+  const bx = clamp(dx < 0 ? x + dx - tw - 28 : x + dx, SAFE.x0 + 4, SAFE.x1 - tw - 32), by = clamp(y + dy - 30, 640, SAFE.y1 - 62), cx = bx + (dx < 0 ? tw + 28 : 0), cy = by + 30;
+  g.strokeStyle = "rgba(247,213,138,.85)"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(clamp(cx, SAFE.x0 + 4, SAFE.x1 - 4), cy); g.stroke();
+  g.fillStyle = "rgba(12,10,16,.86)"; rrect(bx, by, tw + 28, 60, 12); g.fill(); g.fillStyle = col; g.fillText(text, bx + 14, by + 42); g.restore(); reg(id, bx, by, tw + 28, 60, a, fs, 10); }
+// ---- the GPS beat: how late the signal arrives tells you how far away the satellite is ----
+const GPS = { sA: () => ll2v(23, 66, 1.45), sB: () => ll2v(4, 116, 2.05) };
+function gpsFrame(t) {
+  const cam = track([[3.7, [24, 70, 4.6, -330]], [6.0, [22, 74, 5.3, -350]], [8.8, [20, 82, 6.2, -360]], [10.0, [14, 92, 7.0, -370]], [12.9, [10, 98, 7.4, -370]]], t);
+  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .55; EARTH_MAT.uniforms.dayAmt.value = .85; EARTH_MAT.uniforms.sun.value.copy(ll2v(10, 40)).normalize();
+  const pinP = E.pin.position, orb = Math.sin(t * .35) * .02;
+  const pA = GPS.sA().add(new THREE.Vector3(0, orb, 0)), pB = GPS.sB().add(new THREE.Vector3(0, -orb, 0));
+  E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0);
+  const appearA = eo(prog(t, 3.9, 5.0)), appearB = eo(prog(t, 9.7, 10.7));
+  E.A.scale.setScalar(1.3 * appearA + .001); E.B.scale.setScalar(1.3 * appearB + .001);
+  const dA = pA.distanceTo(pinP), dB = pB.distanceTo(pinP);
+  // round 1: slow motion, one packet from A.  round 2: both packets at the same speed, launched together
+  const t1a = tw("sending out"), tArr1 = te("arrives") - .05, v1 = dA / (tArr1 - (t1a + .35));
+  const t2 = tw("later") + .35, vs = dB / 2.05;   // far packet takes ~2 s, near one takes dA/vs
+  const u1 = prog(t, t1a + .35, tArr1), uA2 = clamp((t - t2) * vs / dA), uB2 = clamp((t - t2) * vs / dB);
+  const round2 = t > t2 - .2;
+  const tickGlow = (s, on) => { s.userData.glow.material.opacity = on * (.55 + .45 * Math.sin(t * 12)); };
+  tickGlow(E.A, appearA * (t > tw("atomic clock") - .2 ? 1 : 0)); tickGlow(E.B, appearB * (round2 ? 1 : 0));
+  // ripple when "sending out the time"
+  E.ripple.forEach((r, i) => { const k = prog(t, t1a + i * .35, t1a + i * .35 + 1.0); r.position.copy(pA); r.scale.setScalar(.1 + .55 * eo(k)); r.material.opacity = (k > 0 && k < 1) ? .8 * (1 - k) : 0; });
+  // beams + packets
+  const showA = round2 ? 1 : u1 > 0 ? 1 : 0, uA = round2 ? uA2 : u1;
+  setCyl(E.beamA, pA, pinP); E.beamA.material.opacity = .22 * (u1 > 0 ? 1 : 0) * (1 - prog(t, tArr1 + .6, tArr1 + 1.0) * (round2 ? 0 : 1)) * (round2 ? 1 : 1);
+  E.pkA.position.lerpVectors(pA, pinP, clamp(uA)); E.pkA.material.opacity = (uA > 0 && uA < 1) ? 1 : 0;
+  setCyl(E.beamB, pB, pinP); E.beamB.material.opacity = .22 * appearB * (round2 ? 1 : 0);
+  E.pkB.position.lerpVectors(pB, pinP, clamp(uB2)); E.pkB.material.opacity = (uB2 > 0 && uB2 < 1) ? 1 : 0;
+  // the phone pin reacts on arrival
+  const arrA = round2 ? t2 + dA / vs : tArr1, arrB = t2 + dB / vs;
+  E.pinRing.forEach((r, i) => { const ta = i === 0 ? arrA : arrB, k = prog(t, ta, ta + .9); r.scale.setScalar(.06 + .32 * eo(k)); r.material.opacity = k > 0 && k < 1 ? .85 * (1 - k) : 0; });
+  E.pin.scale.set(.11 * (1 + .12 * Math.sin(Math.PI * prog(t, arrA, arrA + .4))), .14 * (1 + .12 * Math.sin(Math.PI * prog(t, arrA, arrA + .4))), 1);
+  E.vie.material.opacity = 0; E.bei.material.opacity = 0; E.vieRing.material.opacity = 0; E.beiRing.material.opacity = 0;
+  E.pin.material.opacity = eo(prog(t, 3.9, 4.7));
+  draw3D(EARTH, 0x05060b); shade(.7, 760, .45);
+  // pinned labels + the delay HUD
+  lab3("ATOMIC CLOCK", pA.clone().add(new THREE.Vector3(.02, .06, 0)), 70, -90, win(t, tw("atomic clock") - .05, tw("sending out") - .1, .3, .4), "atomic");
+  lab3("YOUR PHONE", pinP, -60, -170, win(t, tw("your phone", 1) - .1, 11.6, .35, .5), "phone", "#F5EFE3");
+  const hudA = win(t, t1a + .2, 12.8, .5, .5); if (hudA > 0) {
+    const row = (y, label, u, col, done, id) => { g.save(); g.globalAlpha = hudA; g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#F5EFE3"; g.fillText(label, 120, y + 36);
+      g.fillStyle = "rgba(255,255,255,.14)"; rrect(120, y + 56, 810, 26, 13); g.fill(); g.fillStyle = col; rrect(120, y + 56, Math.max(26, 810 * u), 26, 13); g.fill();
+      if (done) { g.textAlign = "right"; g.fillStyle = col; g.fillText(done, 930, y + 36); } g.restore(); reg("hud:" + id, 120, y, 810, 90, hudA, 36, 9); };
+    if (!round2) row(1370, "SIGNAL DELAY · SLOW MOTION", u1, "#FFC55C", u1 >= 1 ? "ARRIVED" : "", "d1");
+    else { const uN = clamp((t - t2) * vs / dA), uF = clamp((t - t2) * vs / dB);
+      row(1330, "NEAR SATELLITE", uN, "#7AE0A0", uN >= 1 ? "EARLY" : "", "near"); row(1440, "FAR SATELLITE", uF, "#FF8A6A", uF >= 1 ? "LATE" : "", "far"); }
+  }
+}
+
+// ---- Earth, scene 2: the two labs (Vienna and Beijing) ----
+function raceFrame(t) {
+  const cam = track([[82.6, [44, 62, 6.6, -330]], [86.0, [44, 64, 6.0, -330]], [88.6, [42, 66, 5.7, -330]]], t);
+  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .35; EARTH_MAT.uniforms.dayAmt.value = .95; EARTH_MAT.uniforms.sun.value.copy(ll2v(40, 60)).normalize();
+  E.A.scale.setScalar(.001); E.B.scale.setScalar(.001); E.pin.material.opacity = 0; E.pkA.material.opacity = 0; E.pkB.material.opacity = 0; E.beamA.material.opacity = 0; E.beamB.material.opacity = 0; E.ripple.forEach(r => r.material.opacity = 0); E.pinRing.forEach(r => r.material.opacity = 0);
+  const kv = eob(prog(t, tw("vienna", 0) - .1, tw("vienna", 0) + .5)), kb = eob(prog(t, tw("beijing") - .1, tw("beijing") + .5));
+  E.vie.material.opacity = clamp(kv); E.bei.material.opacity = clamp(kb); E.vie.scale.set(.11 * kv + .001, .14 * kv + .001, 1); E.bei.scale.set(.11 * kb + .001, .14 * kb + .001, 1);
+  const pulse = (ring, t0, per) => { const k = (((t - t0) / per) % 1 + 1) % 1; ring.scale.setScalar(.06 + .3 * eo(k)); ring.material.opacity = t > t0 ? .8 * (1 - k) : 0; };
+  pulse(E.vieRing, tw("vienna", 0) + .3, 1.4); pulse(E.beiRing, tw("beijing") + .3, 1.4);
+  const first = eo(prog(t, tw("first") - .1, tw("first") + .5));
+  E.vie.material.color.setRGB(1, 1, 1); E.bei.material.color.setRGB(1, 1, 1);
+  draw3D(EARTH, 0x05060b); shade(.7, 760, .45);
+  const vp = E.vie.position.clone().multiplyScalar(1.0), bp = E.bei.position.clone();
+  lab3("VIENNA", vp, -50, -120, win(t, tw("vienna", 0) + .1, 88.2, .4, .5), "vie", "#C9B7FF");
+  lab3("BEIJING", bp, 60, -120, win(t, tw("beijing") + .1, 88.2, .4, .5), "bei", "#F7D58A");
+  const sep = win(t, tw("working") - .05, tw("built", 1) + .2, .35, .4); if (sep > 0) { g.save(); g.globalAlpha = sep; g.font = "700 40px Inter"; g.letterSpacing = "5px"; const s2 = "WORKING SEPARATELY", w2 = g.measureText(s2).width + 5; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 30, 1330, w2 + 60, 82, 41); g.fill(); g.strokeStyle = "#9FE8FF"; g.lineWidth = 3; g.stroke(); g.fillStyle = "#9FE8FF"; g.textAlign = "center"; g.fillText(s2, CX + 3, 1384); g.restore(); reg("sep", CX - w2 / 2 - 30, 1330, w2 + 60, 82, sep, 40, 10); }
+  if (first > 0) { g.save(); g.globalAlpha = first; g.font = "700 40px Inter"; g.letterSpacing = "5px"; const s2 = "THE WORLD'S FIRST NUCLEAR CLOCKS", w2 = g.measureText(s2).width + 5; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 28, 1420, w2 + 56, 82, 41); g.fill(); g.strokeStyle = "#FFC55C"; g.lineWidth = 3; g.stroke(); g.fillStyle = "#FFC55C"; g.textAlign = "center"; g.fillText(s2, CX + 3, 1474); g.restore(); reg("first", CX - w2 / 2 - 28, 1420, w2 + 56, 82, first, 40, 10); }
+}
+// ---- Earth, scene 3: the finale - your phone, the satellites, and the clock that might tick inside an atom ----
+function finaleFrame(t) {
+  const cam = track([[93.9, [20, 76, 5.6, -340]], [99.6, [18, 84, 7.2, -360]]], t);
+  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .6; EARTH_MAT.uniforms.dayAmt.value = .8; EARTH_MAT.uniforms.sun.value.copy(ll2v(10, 40)).normalize();
+  const pA = GPS.sA().add(new THREE.Vector3(0, Math.sin(t * .35) * .02, 0)), pB = GPS.sB();
+  E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0); const ap = eo(prog(t, 94.0, 95.0)); E.A.scale.setScalar(1.3 * ap + .001); E.B.scale.setScalar(1.3 * ap + .001);
+  E.A.userData.glow.material.opacity = ap * (.55 + .45 * Math.sin(t * 12)); E.B.userData.glow.material.opacity = ap * (.55 + .45 * Math.sin(t * 12 + 1));
+  E.vie.material.opacity = 0; E.bei.material.opacity = 0; E.vieRing.material.opacity = 0; E.beiRing.material.opacity = 0; E.pinRing.forEach(r => r.material.opacity = 0);
+  // beams from both satellites to the phone, steady pulses
+  E.pin.material.opacity = 1; E.pin.scale.set(.11, .14, 1); const pinP = E.pin.position;
+  setCyl(E.beamA, pA, pinP); setCyl(E.beamB, pB, pinP); E.beamA.material.opacity = .2 * ap; E.beamB.material.opacity = .2 * ap;
+  const u1 = ((t * .4) % 1), u2 = ((t * .4 + .5) % 1); E.pkA.position.lerpVectors(pA, pinP, u1); E.pkB.position.lerpVectors(pB, pinP, u2); E.pkA.material.opacity = ap; E.pkB.material.opacity = ap;
+  E.ripple.forEach((r, i) => { const k = (((t - 94.5) / 1.8 + i * .5) % 1 + 1) % 1; r.position.copy(pinP); r.scale.setScalar(.08 + .5 * eo(k)); r.material.opacity = t > 94.5 ? .5 * (1 - k) : 0; });
+  draw3D(EARTH, 0x05060b); shade(.7, 760, .45);
+  // the phone pin becomes an atom on "inside an atom"
+  const [px, py] = screenOf(pinP.clone().add(new THREE.Vector3(0, 0, 0))), ak = eio(prog(t, tw("inside", 2) - .1, tw("atom", 2) + .35));
+  if (ak > 0) { g.save(); g.globalAlpha = ak; g.translate(px, py - 70); const s = lerp(.2, 1, eob(ak)); g.scale(s, s);
+    const gl = g.createRadialGradient(0, 0, 10, 0, 0, 150); gl.addColorStop(0, "rgba(255,197,92,.6)"); gl.addColorStop(1, "rgba(255,197,92,0)"); g.fillStyle = gl; g.fillRect(-150, -150, 300, 300);
+    for (let i = 0; i < 3; i++) { g.save(); g.rotate(i * Math.PI / 3 + t * .5); g.strokeStyle = "rgba(159,232,255,.95)"; g.lineWidth = 4; g.beginPath(); g.ellipse(0, 0, 92, 34, 0, 0, 7); g.stroke(); const an = t * 2 + i * 2.1; g.fillStyle = "#BFEAFF"; g.beginPath(); g.arc(Math.cos(an) * 92, Math.sin(an) * 34, 8, 0, 7); g.fill(); g.restore(); }
+    g.fillStyle = "#FFB347"; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill(); g.restore(); }
+}
+
+// ======================================================================
+// 2D scenes: the hook (a real photo), the 30 cm ruler card
+// ======================================================================
+function clockFace(cx, cy, r, sec, a = 1, col = "#FFC55C", ghost = null, face = "rgba(14,12,22,.92)") {   // sec: second-hand angle in turns; ghost: a second hand that is slightly wrong
+  g.save(); g.globalAlpha *= a; g.translate(cx, cy);
+  const gl = g.createRadialGradient(0, 0, r * .6, 0, 0, r * 1.7); gl.addColorStop(0, "rgba(255,197,92,.35)"); gl.addColorStop(1, "rgba(255,197,92,0)"); g.fillStyle = gl; g.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+  g.fillStyle = face; g.beginPath(); g.arc(0, 0, r, 0, 7); g.fill(); g.strokeStyle = col; g.lineWidth = Math.max(3, r * .06); g.stroke();
+  for (let i = 0; i < 60; i++) { const an = i / 60 * Math.PI * 2, big = i % 5 === 0, r0 = r * (big ? .78 : .86), r1 = r * .93; g.strokeStyle = big ? col : "rgba(245,239,227,.5)"; g.lineWidth = big ? r * .035 : r * .015; g.beginPath(); g.moveTo(Math.sin(an) * r0, -Math.cos(an) * r0); g.lineTo(Math.sin(an) * r1, -Math.cos(an) * r1); g.stroke(); }
+  const hand = (turn, len, w, c) => { const an = turn * Math.PI * 2; g.strokeStyle = c; g.lineWidth = w; g.lineCap = "round"; g.beginPath(); g.moveTo(-Math.sin(an) * r * .12, Math.cos(an) * r * .12); g.lineTo(Math.sin(an) * r * len, -Math.cos(an) * r * len); g.stroke(); };
+  hand(.04, .5, r * .06, "#F5EFE3"); hand(.62, .68, r * .045, "#F5EFE3");
+  if (ghost !== null) hand(sec + ghost, .84, r * .03, "rgba(255,90,78,.95)");
+  hand(sec, .84, r * .03, col); g.fillStyle = col; g.beginPath(); g.arc(0, 0, r * .06, 0, 7); g.fill(); g.restore();
+}
+// S1 - the hook: a real photo of a city at night; a map pin turns into a clock
+function sHook(t) {
+  const k = eio(prog(t, 0, 4.4)), z = lerp(1.0, 1.1, k), dr = prog(t, 3.2, 4.4);
+  const map = photo(IM.city, .5, lerp(.56, .5, k), z, `saturate(${lerp(1.1, 1.35, k)}) contrast(1.08) brightness(${lerp(.82, .72, k)})`);
+  vignette(.5); shade(.82, 860, .55);
+  const [px, py] = map(.27, .66), reveal = eo(prog(t, tw("map") - .3, tw("map") + .35)), toClock = eio(prog(t, tw("clock") - .15, tw("clock") + .9));
+  // "a map": a faint map grid + a pin that drops in
+  const gridA = reveal * (1 - toClock);
+  if (gridA > 0) { g.save(); g.globalAlpha = .5 * gridA; g.strokeStyle = "rgba(255,226,170,.55)"; g.lineWidth = 2; for (let i = -6; i <= 6; i++) { g.beginPath(); g.moveTo(px + i * 90 - 40, py - 540); g.lineTo(px + i * 90 + 40, py + 540); g.stroke(); g.beginPath(); g.moveTo(px - 540, py + i * 90); g.lineTo(px + 540, py + i * 90 - 30); g.stroke(); } g.restore(); }
+  const drop = eob(prog(t, tw("map") - .15, tw("map") + .45));
+  if (reveal > 0 && toClock < 1) { g.save(); g.globalAlpha = reveal * (1 - toClock); g.translate(px, py - (1 - drop) * 140); g.scale(1 - toClock * .5, 1 - toClock * .5);
+    g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = 20; g.fillStyle = "#FFC55C"; g.beginPath(); g.arc(0, -66, 50, Math.PI * .85, Math.PI * .15, false); g.lineTo(0, 0); g.closePath(); g.fill(); g.shadowColor = "transparent"; g.fillStyle = "#1a1228"; g.beginPath(); g.arc(0, -66, 19, 0, 7); g.fill(); g.restore(); }
+  if (toClock > 0) { const s = eob(prog(t, tw("clock") - .1, tw("clock") + .7)); clockFace(px, py - 70, 118 * Math.max(.01, s), (t - 3.0) / 3.2, toClock); regEl("clock", px - 130, py - 200, 260, 260, toClock); }
+  // a signal ring from the clock
+  const rg = prog(t, tw("clock") + .5, 4.3); if (rg > 0 && rg < 1) { g.save(); g.globalAlpha = .6 * (1 - rg); g.strokeStyle = "#FFC55C"; g.lineWidth = 4; g.beginPath(); g.arc(px, py - 70, 140 + 520 * eo(rg), 0, 7); g.stroke(); g.restore(); }
+}
+// S3 - 30 cm in a billionth of a second: a light pulse races along a ruler, then the phone's clock is off by that much
+function sRuler(t) {
+  creamBg(); const RX0 = 150, RX1 = 900, RY = 1300, PXCM = (RX1 - RX0) / 30, tL = tw("light") - .05;
+  g.save(); g.globalAlpha = .06; g.globalCompositeOperation = "multiply"; g.drawImage(grain, 0, 0, W, H); g.restore();
+  // the ruler slides in
+  const rk = eo(prog(t, 12.1, 13.0)); g.save(); g.globalAlpha = rk; g.translate(0, (1 - rk) * 60);
+  g.shadowColor = "rgba(60,40,20,.3)"; g.shadowBlur = 40; g.shadowOffsetY = 18; g.fillStyle = "#F1C94A"; rrect(RX0 - 40, RY - 70, 830, 170, 14); g.fill(); g.shadowColor = "transparent";
+  g.fillStyle = "#2a2420"; for (let i = 0; i <= 30; i++) { const x = RX0 + i * PXCM, big = i % 5 === 0; g.fillRect(x - 1.5, RY - 70, 3, big ? 62 : 36); if (big) { g.font = "700 38px Inter"; g.textAlign = "center"; g.fillText(String(i), x, RY + 20); } }
+  g.font = "700 30px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = "#6b5718"; g.fillText("CM", RX0 - 20, RY + 78); g.restore(); regEl("ruler", RX0 - 40, RY - 70, 830, 170, rk);
+  // the light pulse + the nanosecond counter
+  const tr = prog(t, tw("30") + .05, te("second") - .1), lx = RX0 + (RX1 - RX0) * tr, ns1 = (tr * 1).toFixed(2);
+  const ca = win(t, tw("travels"), 15.75, .35, .45); if (ca > 0) { g.save(); g.globalAlpha = ca; g.textAlign = "center"; g.fillStyle = "#16121c"; g.font = "800 130px Playfair"; g.fillText(ns1 + " ns", CX, 800);
+    g.font = "700 34px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#9A3F14"; g.fillText("ONE BILLIONTH OF A SECOND", CX, 860); g.restore(); reg("ns", CX - 300, 700, 600, 170, ca, 130, 14); }
+  if (tr > 0) { g.save(); const trail = g.createLinearGradient(RX0, 0, lx, 0); trail.addColorStop(0, "rgba(255,160,40,0)"); trail.addColorStop(1, "rgba(255,150,30,.9)"); g.fillStyle = trail; g.fillRect(RX0, RY - 120, lx - RX0, 16);
+    g.globalCompositeOperation = "source-over"; const gl = g.createRadialGradient(lx, RY - 112, 0, lx, RY - 112, 70); gl.addColorStop(0, "rgba(255,255,255,1)"); gl.addColorStop(.25, "rgba(255,196,90,.9)"); gl.addColorStop(1, "rgba(255,150,30,0)"); g.fillStyle = gl; g.fillRect(lx - 70, RY - 182, 140, 140); g.restore(); }
+  const ba = eo(prog(t, tr >= 1 ? te("second") - .1 : 99, te("second") + .4)); if (ba > 0) { g.save(); g.globalAlpha = ba; g.strokeStyle = "#C0392B"; g.lineWidth = 6; g.beginPath(); g.moveTo(RX0, RY - 150); g.lineTo(RX1, RY - 150); g.moveTo(RX0, RY - 166); g.lineTo(RX0, RY - 134); g.moveTo(RX1, RY - 166); g.lineTo(RX1, RY - 134); g.stroke();
+    g.font = "800 60px Playfair"; g.fillStyle = "#C0392B"; g.textAlign = "center"; g.fillText("30 cm", CX + 20, RY - 180); g.restore(); reg("30cm", CX - 120, RY - 240, 280, 80, ba, 60, 8); }
+  // "one tiny clock mistake": the clock is off by a hair ...
+  const clA = win(t, tw("so", 0) - .1, 20.9, .5, .6), tick = (t - 15.9) / 4.0;
+  if (clA > 0) { g.save(); g.globalAlpha = clA; clockFace(250, 960, 96, tick, 1, "#B4501F", .035 * eo(prog(t, tw("tiny"), tw("mistake") + .3)), "#FBF8F1"); g.restore();
+    const ea = eo(prog(t, tw("tiny") + .3, tw("mistake") + .4)); if (ea > 0) { g.save(); g.globalAlpha = ea * clA; g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.fillStyle = "#C0392B"; g.textAlign = "left"; g.fillText("OFF BY 1 BILLIONTH", 390, 972); g.restore(); reg("off", 390, 936, 470, 50, ea * clA, 36, 8); }
+    regEl("clock2", 140, 850, 220, 220, clA); }
+  // ... and your phone puts you that far from where you really are
+  const pk1 = eob(prog(t, tw("and", 0) + .05, tw("and", 0) + .5)), mv = eio(prog(t, tw("you're") + .3, te("off") - .2)), pa = win(t, tw("and", 0), 21.0, .35, .6);
+  if (pa > 0) { const pin = (x, y, col, lbl, a) => { g.save(); g.globalAlpha = pa * a; g.translate(x, y); g.shadowColor = "rgba(60,40,20,.35)"; g.shadowBlur = 14; g.fillStyle = col; g.beginPath(); g.arc(0, -60, 40, Math.PI * .85, Math.PI * .15, false); g.lineTo(0, 0); g.closePath(); g.fill(); g.shadowColor = "transparent"; g.fillStyle = "#FBF8F1"; g.beginPath(); g.arc(0, -60, 15, 0, 7); g.fill(); g.restore(); };
+    pin(RX0, RY - 72 - (1 - pk1) * 160, "#2E9E5B", "", pk1); pin(RX0 + (RX1 - RX0) * mv, RY - 72 - (1 - pk1) * 160, "#C0392B", "", pk1);
+    const la = pk1 * pa; g.save(); g.globalAlpha = la; g.font = "700 34px Inter"; g.letterSpacing = "3px"; g.textAlign = "left"; g.fillStyle = "#1F7A45"; g.fillText("WHERE YOU ARE", RX0 - 30, RY + 152); g.textAlign = "right"; g.fillStyle = "#C0392B"; g.fillText("WHERE YOUR PHONE THINKS", RX1 + 30, RY + 214); g.restore();
+    reg("p1", RX0 - 30, RY + 118, 400, 44, la, 36, 8); reg("p2", RX1 - 480, RY + 180, 510, 44, la, 36, 8); }
+}
+
+// ======================================================================
+// 3D atom: electrons on the outside, a tiny nucleus inside, a vault that locks it in
+// ======================================================================
+const ATOM = new THREE.Scene(); const A3 = { el: [], ring: [], parts: [] };
+const CYAN = glowTex(110, 200, 255), VIO = glowTex(170, 120, 255);
+function buildAtom() {
+  ATOM.add(new THREE.AmbientLight(0x8fa6ff, .75)); const dl = new THREE.DirectionalLight(0xfff0d8, 2.4); dl.position.set(3, 4, 5); ATOM.add(dl);
+  const sg = new THREE.BufferGeometry(), sp = []; for (let i = 0; i < 1800; i++) { const v = new THREE.Vector3(R() - .5, R() - .5, R() - .5).normalize().multiplyScalar(30 + R() * 30); sp.push(v.x, v.y, v.z); }
+  sg.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3)); ATOM.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xcfd6ff, size: .14, transparent: true, opacity: .6 })));
+  A3.root = new THREE.Group(); ATOM.add(A3.root);
+  // nucleus: protons (gold) and neutrons (pale blue-grey) packed tight
+  A3.nuc = new THREE.Group(); A3.root.add(A3.nuc);
+  const pts = [[0, 0, 0]]; const ph = (1 + Math.sqrt(5)) / 2; for (const [a, b] of [[1, ph], [-1, ph], [1, -ph], [-1, -ph]]) { pts.push([0, a, b], [b, 0, a], [a, b, 0]); }
+  pts.forEach((p, i) => { const v = new THREE.Vector3(...p).multiplyScalar(.02); const proton = i % 2 === 0;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.03, 24, 18), new THREE.MeshStandardMaterial({ color: proton ? 0xffb347 : 0xc9d6ee, emissive: proton ? 0xff7a1a : 0x4a5f8a, emissiveIntensity: proton ? .55 : .2, roughness: .35, metalness: .1 })); m.position.copy(v); A3.nuc.add(m); });
+  A3.nucGlow = new THREE.Sprite(spriteMat(GOLD, .55)); A3.nucGlow.scale.setScalar(.34); A3.nuc.add(A3.nucGlow);
+  // three shells; the outermost shell is the one the clock ticks on
+  const radii = [.4, .7, 1.0], counts = [2, 4, 6], tilts = [[.35, 0, .25], [1.15, .4, 0], [-.55, .9, .3]], speed = [1.25, .85, .55];
+  radii.forEach((r, s) => { const grp = new THREE.Group(); grp.rotation.set(...tilts[s]); A3.root.add(grp);
+    const pp = []; for (let i = 0; i <= 128; i++) { const a = i / 128 * Math.PI * 2; pp.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)); }
+    const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pp), new THREE.LineBasicMaterial({ color: s === 2 ? 0xffc35c : 0x7fa8ff, transparent: true, opacity: s === 2 ? .5 : .28 })); grp.add(ring); A3.ring.push(ring);
+    for (let j = 0; j < counts[s]; j++) { const m = new THREE.Mesh(new THREE.SphereGeometry(.026, 20, 14), new THREE.MeshStandardMaterial({ color: 0xbfeaff, emissive: 0x3bb8ff, emissiveIntensity: 1.1 })); const gl = new THREE.Sprite(spriteMat(CYAN, .75)); gl.scale.setScalar(.13); m.add(gl);
+      grp.add(m); A3.el.push({ m, gl, r, s, j, ph: j / counts[s] * Math.PI * 2 + s, w: speed[s] * (s === 1 ? -1 : 1), grp }); } });
+  // the vault: a heavy ring with bolts that slide in
+  A3.vault = new THREE.Group(); A3.root.add(A3.vault); const steel = new THREE.MeshStandardMaterial({ color: 0xb9c0c8, metalness: .9, roughness: .3 });
+  A3.vRing = new THREE.Mesh(new THREE.TorusGeometry(.5, .05, 18, 72), steel); A3.vault.add(A3.vRing);
+  A3.vBolts = []; for (let i = 0; i < 10; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(.032, .032, .26, 12), steel); b.userData.a = i / 10 * Math.PI * 2; A3.vault.add(b); A3.vBolts.push(b); }
+  A3.vDisc = new THREE.Mesh(new THREE.CircleGeometry(.5, 48), new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })); A3.vault.add(A3.vDisc);
+  // things that disturb the outside: heat / shaking / magnets / (anything) as small glowing particles
+  for (let i = 0; i < 70; i++) { const s = new THREE.Sprite(spriteMat(i % 3 === 0 ? REDG : GOLD, 0)); s.scale.setScalar(.12); ATOM.add(s); A3.parts.push({ s, dir: new THREE.Vector3(R() - .5, R() - .5, R() - .5).normalize(), ph: R(), stop: .55 + R() * .45 }); }
+}
+const ATOM_DOMAIN = { show: [20.9, 99], dive: [39.2, 44.3] };
+function atomFrame(t) {
+  const cam = track([[20.9, [20, 18, 11.5]], [25.0, [36, 16, 9.6]], [27.4, [52, 14, 8.2]], [33.0, [72, 18, 8.4]], [37.4, [92, 16, 8.8]],
+    [39.2, [92, 16, 8.8]], [44.3, [150, 8, .95]], [45.4, [160, 8, .95]], [48.6, [188, 14, 6.6]], [49.7, [196, 12, 4.4]], [52.5, [212, 8, 4.0]]], t);
+  const az = cam[0] * Math.PI / 180, el = cam[1] * Math.PI / 180, d = cam[2];
+  CAM.fov = 35; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -190, W, H); CAM.up.set(0, 1, 0); CAM.position.set(d * Math.cos(el) * Math.sin(az), d * Math.sin(el), d * Math.cos(el) * Math.cos(az)); CAM.lookAt(0, 0, 0); CAM.updateProjectionMatrix();
+  const appear = eo(prog(t, 21.4, 23.2)), ticks = prog(t, 25.34, 99), tickP = ((t - 25.34) / .9) % 1, flash = ticks > 0 ? Math.exp(-7 * tickP) : 0;
+  const dist = (t < 38 ? eio(prog(t, 33.63, 34.9)) * (1 - eio(prog(t, 36.2, 36.9))) : 0), hl = win(t, tw("electrons"), te("outside") + .1, .3, .5);
+  A3.root.scale.setScalar(Math.max(.001, appear));
+  // shaking is the whole atom; the magnet tilts the orbits
+  const shk = dist * (t > tw("shaking") ? 1 : .3);
+  A3.root.position.set(Math.sin(t * 19) * .035 * shk, Math.sin(t * 23 + 1) * .03 * shk, 0);
+  A3.root.rotation.z = Math.sin(t * 1.1) * .04 + (t > tw("magnet") && t < 36.9 ? Math.sin((t - tw("magnet")) * 5) * .12 * dist : 0);
+  A3.el.forEach(e => { const th = e.ph + e.w * t * (1 + .5 * dist * Math.sin(t * 7 + e.j)); const jit = 1 + dist * .07 * Math.sin(t * 17 + e.j * 3 + e.s);
+    e.m.position.set(Math.cos(th) * e.r * jit, Math.sin(t * 11 + e.j) * .03 * dist, Math.sin(th) * e.r * jit);
+    const outer = e.s === 2, f = outer ? (flash * .9 + hl * .9) : 0, hot = outer ? dist : 0;
+    e.m.material.emissive.setRGB(lerp(.23, 1, Math.max(f, hot)), lerp(.72, .55 - .3 * hot, Math.max(f, hot)), lerp(1, .15, Math.max(f, hot))); e.m.material.emissiveIntensity = 1.3 + 1.6 * f;
+    e.gl.material.map = (f > .25 || hot > .3) ? GOLD : CYAN; e.gl.scale.setScalar(.13 + .16 * f); e.m.scale.setScalar(1 + .6 * hl * (outer ? 1 : 0)); });
+  A3.ring[2].material.opacity = .5 + .4 * hl + .3 * flash; A3.ring[2].material.color.setHex(dist > .3 ? 0xff8a5c : 0xffc35c);
+  A3.nuc.rotation.y = t * .5; A3.nucGlow.scale.setScalar(.32 + .04 * Math.sin(t * 4));
+  // heat / shaking / magnet particles streaming at the outside (round 1: they hit the electrons) - and, later, fizzling out before the nucleus
+  const inP1 = dist, inP2 = win(t, 45.5, 49.6, .5, .5);
+  A3.parts.forEach((p, i) => { const u = ((t * .35 + p.ph) % 1), pos = p.dir.clone().multiplyScalar(lerp(3.2, p.stop, u)); p.s.position.copy(pos);
+    const a1 = i < 36 ? inP1 * (u < .95 ? 1 : 0) : 0, a2 = i >= 24 ? inP2 * (u < .96 ? Math.min(1, (1 - u) * 3) : 0) : 0, op = Math.max(a1 * (u > .55 ? 1 : .5) * (i < 36 ? 1 : 0), a2); p.s.material.opacity = op * .95; p.s.scale.setScalar(.1 + .05 * Math.sin(t * 9 + i)); });
+  // the vault closes around the nucleus: "like a clock locked in a vault"
+  const vk = eio(prog(t, tw("locked") - .6, tw("vault") + .1)); A3.vault.visible = vk > .001; A3.vRing.scale.setScalar(lerp(2.4, 1, vk)); A3.vRing.material.opacity = 1;
+  A3.vBolts.forEach(b => { const a = b.userData.a, rr = lerp(.95, .43, vk); b.position.set(Math.cos(a) * rr, Math.sin(a) * rr, 0); b.rotation.z = a + Math.PI / 2; b.scale.setScalar(Math.max(.01, vk)); });
+  A3.vDisc.material.opacity = .22 * vk; A3.vault.rotation.y = .4 * (1 - vk); A3.vault.lookAt(CAM.position);
+  // shells fade a little as the camera dives through them
+  A3.ring.forEach((r, i) => { if (i < 2) r.material.opacity = .28 * (1 - .6 * prog(t, 42.5, 44)); });
+  draw3D(ATOM, 0x04050c); shade(.7, 760, .45);
+  return { dist, hl };
+}
+// pinned labels and HUD for the atom
+function atomOverlay(t) {
+  const wp = (e) => e.m.getWorldPosition(new THREE.Vector3());
+  const outer = A3.el.filter(e => e.s === 2); const e0 = outer[0];
+  lab3("ELECTRONS", wp(e0), -70, -110, win(t, tw("electrons") - .05, tw("outside", 0) - .05, .3, .4), "electrons", "#9FE8FF");
+  lab3("OUTSIDE", wp(outer[3]), 70, 120, win(t, tw("outside", 0), tw("outside", 1) - .05, .3, .45), "outside", "#F7D58A");
+  // the tick wave: a clean ticking wave that turns ragged when the outside is disturbed
+  const wa = win(t, 25.34, 37.1, .6, .5); if (wa > 0) { const dist = (t < 38 ? eio(prog(t, 33.63, 34.9)) * (1 - eio(prog(t, 36.2, 36.9))) : 0);
+    g.save(); g.globalAlpha = wa; const y0 = 1450, x0 = 130, x1 = 920; g.fillStyle = "rgba(10,12,22,.62)"; rrect(x0 - 20, y0 - 56, x1 - x0 + 40, 130, 18); g.fill();
+    g.strokeStyle = dist > .25 ? "#FF8A6A" : "#FFC55C"; g.lineWidth = 5; g.lineJoin = "round"; g.beginPath();
+    for (let x = x0; x <= x1; x += 4) { const u = (x - x0) / (x1 - x0), ph = (u * 7 - (t - 25.34) * 1.1) * Math.PI * 2, amp = 40 * (1 + dist * (Math.sin(ph * 2.7 + t * 9) * .6)), yy = y0 - Math.sin(ph + dist * Math.sin(t * 13 + u * 40) * 1.4) * amp + dist * (Math.sin(t * 31 + u * 90) * 12); x === x0 ? g.moveTo(x, yy) : g.lineTo(x, yy); } g.stroke();
+    g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = dist > .25 ? "#FF8A6A" : "#F5EFE3"; g.fillText(dist > .25 ? "OFF-BEAT" : "TICK · TICK · TICK", x0, y0 - 92); g.restore(); regEl("wave", x0 - 20, y0 - 56, x1 - x0 + 40, 130, wa); reg("wavelbl", x0, y0 - 134, 520, 48, wa, 36, 9); }
+  // chips: heat / shaking / magnet land on their words
+  const chip = (txt2, x, y, col, tt, draw, id) => { const a = win(t, tt - .05, 36.6, .3, .45) * eo(prog(t, tt - .05, tt + .35)); if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = "700 38px Inter"; g.letterSpacing = "4px"; const tw2 = g.measureText(txt2).width + 4, bw = tw2 + 110;
+    g.fillStyle = "rgba(12,10,16,.9)"; rrect(x, y, bw, 78, 39); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); draw(x + 46, y + 39, col); g.fillStyle = col; g.textAlign = "left"; g.fillText(txt2, x + 84, y + 52); g.restore(); reg("chip:" + id, x, y, bw, 78, a, 38, 10); return bw; };
+  const iconHeat = (x, y, c) => { g.strokeStyle = c; g.lineWidth = 4; g.lineCap = "round"; for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(x + i * 11, y + 16); g.bezierCurveTo(x + i * 11 - 8, y + 6, x + i * 11 + 8, y - 6, x + i * 11, y - 16); g.stroke(); } };
+  const iconShake = (x, y, c) => { g.strokeStyle = c; g.lineWidth = 4; g.lineCap = "round"; g.lineJoin = "round"; g.beginPath(); g.moveTo(x - 20, y); for (let i = 0; i < 5; i++) g.lineTo(x - 20 + (i + 1) * 8, y + (i % 2 ? 12 : -12)); g.stroke(); };
+  const iconMag = (x, y, c) => { g.strokeStyle = c; g.lineWidth = 8; g.lineCap = "butt"; g.beginPath(); g.arc(x, y - 2, 15, Math.PI, 0, false); g.lineTo(x + 15, y + 15); g.moveTo(x - 15, y - 2); g.lineTo(x - 15, y + 15); g.stroke(); g.strokeStyle = "#F5EFE3"; g.lineWidth = 8; g.beginPath(); g.moveTo(x - 15, y + 9); g.lineTo(x - 15, y + 17); g.moveTo(x + 15, y + 9); g.lineTo(x + 15, y + 17); g.stroke(); };
+  chip("HEAT", 110, 520, "#FF9A5C", tw("heat"), iconHeat, "heat"); chip("SHAKING", 380, 520, "#9FC4FF", tw("shaking"), iconShake, "shake"); chip("MAGNET", 100, 620, "#FF6B6B", tw("magnet") - .1, iconMag, "mag");
+  // scale: the nucleus is tens of thousands of times smaller
+  const sa = win(t, tw("tens") - .1, tw("it", 2) + .1, .5, .6); if (sa > 0) { g.save(); g.globalAlpha = sa; const y0 = 1430; g.fillStyle = "rgba(10,12,22,.78)"; rrect(100, y0 - 110, 850, 190, 18); g.fill();
+    g.fillStyle = "rgba(127,168,255,.9)"; rrect(140, y0 - 62, 780, 16, 8); g.fill(); g.fillStyle = "#F5EFE3"; g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillText("ATOM", 140, y0 - 76);
+    g.fillStyle = "#FFC55C"; g.fillRect(140, y0 - 6, 3, 28); g.fillText("NUCLEUS", 160, y0 + 16); g.textAlign = "right"; g.fillStyle = "#9FE8FF"; g.fillText("NOT TO SCALE", 920, y0 + 56); g.restore(); regEl("scale", 100, y0 - 110, 850, 190, sa); }
+}
+
+// ======================================================================
+// 3D crystal + laser: thorium sits in a crystal, a violet laser shines through, a sensor watches how much light gets absorbed
+// ======================================================================
+const CRY = new THREE.Scene(); const C3 = { dots: [], fronts: [] };
+const YL = 1.55, YC = .4, YD = -1.55;   // laser / crystal half-height / sensor, along the vertical beam
+function hsl(h, s = 1, l = .62) { return new THREE.Color().setHSL(h, s, l); }
+function buildCrystal() {
+  // reflections for the glass
+  const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(40, 32, 16), new THREE.MeshBasicMaterial({ color: 0x0a0c16, side: THREE.BackSide })));
+  for (const [x, y, z, c, s] of [[-12, 14, 8, 0xffe2c0, 10], [14, 6, -10, 0x7f9fff, 8], [0, 18, -12, 0xffffff, 6]]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(s, s), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide })); p.position.set(x, y, z); p.lookAt(0, 0, 0); envScene.add(p); }
+  CRY.environment = PMREM.fromScene(envScene, .04).texture;
+  CRY.add(new THREE.HemisphereLight(0x6f86c8, 0x0a0a10, .55)); const key = new THREE.DirectionalLight(0xfff0d8, 2.0); key.position.set(-4, 6, 6); CRY.add(key);
+  const sg = new THREE.BufferGeometry(), sp = []; for (let i = 0; i < 1500; i++) { const v = new THREE.Vector3(R() - .5, R() - .5, R() - .5).normalize().multiplyScalar(26 + R() * 30); sp.push(v.x, v.y, v.z); }
+  sg.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3)); CRY.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xcfd6ff, size: .12, transparent: true, opacity: .5 })));
+  // the crystal: calcium fluoride, with thorium nuclei scattered inside
+  C3.crystal = new THREE.Mesh(new THREE.BoxGeometry(1.05, YC * 2, 1.05), new THREE.MeshPhysicalMaterial({ color: 0xcfe6ff, transparent: true, opacity: .2, roughness: .04, metalness: 0, clearcoat: 1, clearcoatRoughness: .05, envMapIntensity: 1.8, side: THREE.DoubleSide, depthWrite: false })); CRY.add(C3.crystal);
+  C3.edges = new THREE.LineSegments(new THREE.EdgesGeometry(C3.crystal.geometry), new THREE.LineBasicMaterial({ color: 0xaad4ff, transparent: true, opacity: .9 })); CRY.add(C3.edges);
+  for (let i = 0; i < 34; i++) { const s = new THREE.Sprite(spriteMat(GOLD, .9)); s.position.set((R() - .5) * .9, (R() - .5) * YC * 1.7, (R() - .5) * .9); s.scale.setScalar(.075); CRY.add(s); C3.dots.push({ s, ph: R() * 6.28, base: s.position.clone() }); }
+  // the laser, the beam (three pieces) and the sensor
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, metalness: .85, roughness: .35 });
+  C3.laser = new THREE.Mesh(new THREE.BoxGeometry(.55, .38, .55), metal); C3.laser.position.y = YL + .19; CRY.add(C3.laser);
+  C3.lens = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .04, 24), new THREE.MeshBasicMaterial({ color: 0xb48cff })); C3.lens.position.y = YL - .02; CRY.add(C3.lens);
+  C3.sensor = new THREE.Mesh(new THREE.BoxGeometry(.8, .12, .8), new THREE.MeshStandardMaterial({ color: 0x20242e, metalness: .7, roughness: .4 })); C3.sensor.position.y = YD - .06; CRY.add(C3.sensor);
+  C3.sPlate = new THREE.Mesh(new THREE.CircleGeometry(.28, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xb48cff, transparent: true, opacity: .1 })); C3.sPlate.position.y = YD + .002; CRY.add(C3.sPlate);
+  const bm = (r) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 14), new THREE.MeshBasicMaterial({ color: 0xb48cff, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending })); CRY.add(m); return m; };
+  C3.b1 = bm(.026); C3.b2 = bm(.026); C3.b3 = bm(.026); C3.halo = [bm(.07), bm(.07), bm(.07)]; C3.halo.forEach(h => h.material.opacity = .22);
+  C3.hit = new THREE.Sprite(spriteMat(VIO, 0)); C3.hit.scale.setScalar(.9); CRY.add(C3.hit);
+  // wave fronts that march down the beam when we "count the waves"
+  for (let i = 0; i < 26; i++) { const m = new THREE.Mesh(new THREE.TorusGeometry(.07, .006, 8, 40), new THREE.MeshBasicMaterial({ color: 0xd9c4ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = Math.PI / 2; CRY.add(m); C3.fronts.push(m); }
+}
+const laserHue = t => .76 - .15 * eio(prog(t, 75.0, 76.1)) + .15 * eio(prog(t, 78.55, 79.85));
+const absorbAt = t => Math.exp(-(((laserHue(t) - .76) / .05) ** 2));
+function crystalFrame(t) {
+  const cam = track([[69.9, [-34, 18, 4.9, 0]], [71.9, [-20, 14, 4.2, 0]], [72.4, [-14, 11, 4.8, .2]], [74.4, [-8, 9, 13.5, -.1]], [76.6, [-10, 10, 10.8, -.45]], [78.4, [-12, 10, 10.4, -.35]],
+    [80.3, [-26, 8, 3.9, .75]], [83.2, [-30, 8, 3.7, .6]]], t);
+  const az = cam[0] * Math.PI / 180, el = cam[1] * Math.PI / 180, d = cam[2], ty = cam[3];
+  CAM.fov = 35; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -170, W, H); CAM.up.set(0, 1, 0); CAM.position.set(d * Math.cos(el) * Math.sin(az), ty + d * Math.sin(el), d * Math.cos(el) * Math.cos(az)); CAM.lookAt(0, ty, 0); CAM.updateProjectionMatrix();
+  const hue = laserHue(t), col = hsl(hue), ab = absorbAt(t), on = eo(prog(t, tw("laser", 1) - .1, tw("laser", 1) + .5));   // the laser switches on at "A laser shines through"
+  const pass = on * (1 - .88 * ab);   // light that makes it through
+  [C3.b1, C3.b2, C3.b3, ...C3.halo].forEach(m => m.material.color.copy(col)); C3.lens.material.color.copy(col); C3.sPlate.material.color.copy(col);
+  const seg = (m, y0, y1, a) => { m.position.y = (y0 + y1) / 2; m.scale.set(1, Math.abs(y1 - y0), 1); m.material.opacity = a; };
+  seg(C3.b1, YL, YC, on * .95); seg(C3.halo[0], YL, YC, on * .2);
+  seg(C3.b2, YC, -YC, on * (.95 - .5 * ab)); seg(C3.halo[1], YC, -YC, on * .12);
+  seg(C3.b3, -YC, YD, pass * .95); seg(C3.halo[2], -YC, YD, pass * .22);
+  C3.sPlate.material.opacity = .08 + .7 * pass; C3.hit.position.set(0, YD + .03, 0); C3.hit.material.opacity = .9 * pass; C3.hit.material.color.copy(col);
+  // thorium nuclei light up when they soak the light
+  C3.dots.forEach(p => { const lit = on * ab; p.s.material.map = lit > .35 ? VIO : GOLD; p.s.material.opacity = .45 + .5 * lit; p.s.scale.setScalar(.06 + .06 * lit * (.7 + .3 * Math.sin(t * 9 + p.ph)));
+    p.s.position.set(p.base.x + Math.sin(t * .7 + p.ph) * .012, p.base.y + Math.cos(t * .9 + p.ph) * .01, p.base.z); });
+  C3.crystal.rotation.y = 0; C3.edges.rotation.y = 0;
+  // wave fronts
+  const wk = win(t, tw("count", 1) - .1, 83.3, .35, .5);
+  C3.fronts.forEach((m, i) => { const u = (((t - 80.4) * .85 + i * .0538) % 1 + 1) % 1, y = lerp(YL - .05, YC + .02, u); m.position.y = y; m.material.opacity = wk * on * .85 * Math.sin(Math.PI * u) ** .6; m.material.color.copy(col).offsetHSL(0, 0, .15); m.scale.setScalar(1 + .6 * Math.sin(Math.PI * u)); });
+  draw3D(CRY, 0x04050b); shade(.7, 760, .45);
+  return { ab, pass, hue, on };
+}
+function crystalOverlay(t) {
+  const ab = absorbAt(t), on = eo(prog(t, tw("laser", 1) - .1, tw("laser", 1) + .5)), pass = on * (1 - .88 * ab);
+  // pinned labels
+  lab3("THORIUM", C3.dots[3].s.position.clone(), -80, -60, win(t, tw("thorium", 1) - .05, tw("crystal") + .35, .3, .45), "th", "#F7D58A");
+  lab3("CRYSTAL", new THREE.Vector3(.52, -.2, .52), 70, 90, win(t, tw("crystal") - .1, 72.35, .3, .35), "cry", "#9FD0FF");
+  lab3("LASER", new THREE.Vector3(.3, YL + .1, 0), 110, 10, win(t, tw("laser", 1) - .05, 74.1, .3, .4), "las", "#C9A9FF");
+  // labels that land on their words
+  const bl = (txt2, t0, t1, y, col, id) => { const a = win(t, t0, t1, .3, .4); if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = "700 40px Inter"; g.letterSpacing = "4px"; const w2 = g.measureText(txt2).width + 4; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 28, y - 46, w2 + 56, 78, 39); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); g.fillStyle = col; g.textAlign = "center"; g.fillText(txt2, CX + 2, y + 8); g.restore(); reg("bl:" + id, CX - w2 / 2 - 28, y - 46, w2 + 56, 78, a, 40, 10); };
+  bl("THE COLOUR DRIFTS", tw("drifts") - .1, tw("thorium", 2) - .05, 540, "#9FC4FF", "drift");
+  bl("LESS LIGHT SOAKED UP", tw("soaking") - .1, te("light", 2) + .4, 540, "#FFC55C", "soak");
+  bl("THE CLOCK FIXES THE LASER", tw("fix") - .25, te("laser", 2) + .35, 540, "#7AE0A0", "fix");
+  // HUD: the laser's colour dial, the sensor bar, and the feedback arrow
+  const hud = win(t, tw("a laser") + .4, 80.4, .5, .6); if (hud > 0) { g.save(); g.globalAlpha = hud;
+    g.fillStyle = "rgba(10,12,22,.78)"; rrect(90, 1300, 870, 230, 22); g.fill();
+    const dcx = 230, dcy = 1425, dr = 78; g.strokeStyle = "rgba(255,255,255,.18)"; g.lineWidth = 16; g.beginPath(); g.arc(dcx, dcy, dr, Math.PI * .8, Math.PI * 2.2); g.stroke();
+    const grd = g.createLinearGradient(dcx - dr, 0, dcx + dr, 0); grd.addColorStop(0, "hsl(215,100%,62%)"); grd.addColorStop(1, "hsl(272,100%,66%)"); g.strokeStyle = grd; g.lineWidth = 16; g.beginPath(); g.arc(dcx, dcy, dr, Math.PI * .8, Math.PI * 2.2); g.stroke();
+    const na = lerp(Math.PI * .8, Math.PI * 2.2, clamp((laserHue(t) - .59) / (.76 - .59))); g.strokeStyle = "#F5EFE3"; g.lineWidth = 6; g.lineCap = "round"; g.beginPath(); g.moveTo(dcx, dcy); g.lineTo(dcx + Math.cos(na) * (dr - 8), dcy + Math.sin(na) * (dr - 8)); g.stroke(); g.fillStyle = "#F5EFE3"; g.beginPath(); g.arc(dcx, dcy, 9, 0, 7); g.fill();
+    g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.textAlign = "center"; g.fillStyle = "#F5EFE3"; g.fillText("LASER COLOUR", dcx, 1340);
+    const bx = 420, bw = 500; g.textAlign = "left"; g.fillText("LIGHT AT THE SENSOR", bx, 1384); g.fillStyle = "rgba(255,255,255,.14)"; rrect(bx, 1410, bw, 34, 17); g.fill(); g.fillStyle = pass > .6 ? "#FFC55C" : "#8F7BE0"; rrect(bx, 1410, Math.max(34, bw * pass), 34, 17); g.fill();
+    g.fillStyle = pass > .6 ? "#FFC55C" : "#C9A9FF"; g.fillText(pass > .6 ? "MORE LIGHT GETS THROUGH" : "THORIUM SOAKS IT UP", bx, 1488);
+    const fb = prog(t, tw("fix") - .2, tw("laser", 2) + .1); if (fb > 0 && fb < 1.2) { g.strokeStyle = "#7AE0A0"; g.lineWidth = 5; g.setLineDash([14, 10]); g.lineDashOffset = -t * 40; g.beginPath(); g.moveTo(bx - 10, 1427); g.lineTo(dcx + dr + 24, 1427); g.stroke(); g.setLineDash([]); g.fillStyle = "#7AE0A0"; g.beginPath(); g.moveTo(dcx + dr + 30, 1427); g.lineTo(dcx + dr + 52, 1415); g.lineTo(dcx + dr + 52, 1439); g.closePath(); g.fill(); }
+    g.restore(); regEl("hud", 90, 1352, 860, 178, hud); reg("hudl1", 130, 1300, 220, 50, hud, 36, 9); }
+  // counting the waves: waves -> ticks -> time
+  const ca = win(t, tw("count", 1) - .05, 83.2, .4, .5); if (ca > 0) { g.save(); g.globalAlpha = ca; g.fillStyle = "rgba(10,12,22,.82)"; rrect(90, 1290, 870, 240, 22); g.fill();
+    const wv = Math.floor((t - 80.4) * 4.7e11), s2 = ((wv % 1e12) + "").padStart(12, "0").replace(/(\d{3})(?=\d)/g, "$1 ");
+    g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#C9A9FF"; g.textAlign = "left"; g.fillText("WAVES COUNTED", 130, 1348); g.font = "800 66px Oswald"; g.fillStyle = "#F5EFE3"; g.letterSpacing = "6px"; g.fillText(s2, 130, 1430);
+    const sec = Math.floor(Math.max(0, t - 80.9) * 1); g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#FFC55C"; g.fillText("= TIME", 130, 1490); g.font = "800 40px Oswald"; g.fillText("00:00:" + String(sec).padStart(2, "0"), 330, 1492);
+    g.restore(); regEl("count", 90, 1342, 860, 188, ca); reg("cnt", 130, 1298, 400, 44, ca, 36, 9); }
+}
+
+// ======================================================================
+// 2D scenes: the clock in the wind, the energy/colour hunt (dark UI), the "not yet" chart (cream card)
+// ======================================================================
+function windGust(t, y0, y1, a, col) {   // soft wind streaks drifting across the card
+  g.save(); g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = 4; g.lineCap = "round";
+  for (let i = 0; i < 9; i++) { const y = lerp(y0, y1, i / 8) + Math.sin(i * 2.3) * 24, sp = 520 + i * 40, x = (((t * sp + i * 311) % 1500) - 200), len = 130 + (i % 3) * 60;
+    g.beginPath(); g.moveTo(x, y); g.bezierCurveTo(x + len * .4, y - 18, x + len * .7, y + 18, x + len, y - 4); g.stroke(); } g.restore();
+}
+// S - a clock hanging out in the wind
+function sWind(t) {
+  creamBg(); g.save(); g.globalAlpha = .06; g.globalCompositeOperation = "multiply"; g.drawImage(grain, 0, 0, W, H); g.restore();
+  const gust = eio(prog(t, tw("hanging") - .2, tw("wind") + .6)), sway = Math.sin(t * 2.6) * (.09 + .26 * gust) + Math.sin(t * 4.1) * .03 * gust, ax = CX, ay = 660, L = 430;
+  windGust(t, 800, 1450, .35 + .4 * gust, "#9A8F7C");
+  const cx = ax + Math.sin(sway) * L, cy = ay + Math.cos(sway) * L;
+  g.save(); g.fillStyle = "#6b5718"; g.beginPath(); g.arc(ax, ay, 14, 0, 7); g.fill(); g.strokeStyle = "#3a3329"; g.lineWidth = 6; g.beginPath(); g.moveTo(ax, ay); g.lineTo(cx, cy - 200); g.stroke();
+  g.translate(cx, cy); g.rotate(sway * .6); g.shadowColor = "rgba(60,40,20,.35)"; g.shadowBlur = 30; g.shadowOffsetY = 16; g.translate(-cx, -cy);
+  clockFace(cx, cy, 200, (t - 37) * .02 * 6, 1, "#2a2420", null, "#FBF8F1"); g.restore();
+  // the tick wave goes ragged: the clock cannot keep a steady beat
+  const wa = eo(prog(t, tw("wind") - .2, tw("wind") + .5)); if (wa > 0) { g.save(); g.globalAlpha = wa; const y0 = 1400; g.strokeStyle = "#C0392B"; g.lineWidth = 5; g.beginPath(); for (let x = 120; x <= 960; x += 4) { const u = (x - 120) / 840, yy = y0 - Math.sin(u * 40 + t * 8) * (30 + 24 * Math.sin(u * 17 + t * 5)); x === 120 ? g.moveTo(x, yy) : g.lineTo(x, yy); } g.stroke(); g.restore(); }
+}
+// S - one problem, then thorium, then the exact colour (a dark UI world), then the 50-year hunt
+const SP = { x0: 120, x1: 920, y: 1100 };   // spectrum strip; 100-800 nm
+const spx = nm => SP.x0 + (nm - 100) / 700 * (SP.x1 - SP.x0);
+function visGradient() { const gr = g.createLinearGradient(spx(400), 0, spx(700), 0); [[0, "#7a2cff"], [.18, "#2f5bff"], [.38, "#27d3ff"], [.52, "#37e06b"], [.7, "#ffe04a"], [.85, "#ff8a2a"], [1, "#ff3b2a"]].forEach(([o, c]) => gr.addColorStop(o, c)); return gr; }
+function sSpectrum(t) {
+  darkBg(.3); g.save(); g.globalAlpha = .05; g.globalCompositeOperation = "overlay"; g.drawImage(grain, 0, 0, W, H); g.restore();
+  // ---- A: the energy needed (huge for a usual nucleus, tiny for thorium) ----
+  const A = win(t, 52.2, tw("except", 0) + .2, .6, .8) , A2 = win(t, tw("except", 0) - .1, 62.9, .7, .8);
+  if (A > 0) { g.save(); g.globalAlpha = A; const bx = 300, by = 1380, bh = 700, bw = 150, k = eio(prog(t, tw("huge") - .5, tw("huge") + .9));
+    g.fillStyle = "rgba(255,255,255,.1)"; rrect(bx, by - bh, bw, bh, 16); g.fill(); const gr = g.createLinearGradient(0, by, 0, by - bh); gr.addColorStop(0, "#FF9A5C"); gr.addColorStop(1, "#FF3B2A"); g.fillStyle = gr; rrect(bx, by - bh * k, bw, Math.max(8, bh * k), 16); g.fill();
+    g.font = "700 38px Inter"; g.letterSpacing = "4px"; g.textAlign = "center"; g.fillStyle = "#F5EFE3"; g.fillText("A USUAL NUCLEUS", bx + bw / 2 + 60, by + 56); g.fillStyle = "#FF8A6A"; g.fillText("NEEDS HUGE ENERGY", bx + bw / 2 + 60, by + 104);
+    const hk = eo(prog(t, tw("huge") + .3, tw("energy") + .3)); if (hk > 0) { g.globalAlpha = A * hk; g.font = "800 150px Playfair"; g.fillStyle = "#FF6B5A"; g.fillText("HUGE", bx + bw + 270, by - bh * .5 + 40); }
+    g.restore(); regEl("bar1", bx - 20, by - bh - 10, 660, bh + 140, A); }
+  // ---- B/C: thorium, its ultraviolet colour, and the hunt ----
+  if (A2 > 0) {
+    const tile = eob(prog(t, tw("thorium", 0) - .1, tw("thorium", 0) + .5)); g.save(); g.globalAlpha = A2 * clamp(tile); g.translate(210, 640); g.scale(.4 + .6 * tile, .4 + .6 * tile);
+    g.shadowColor = "rgba(255,197,92,.55)"; g.shadowBlur = 40; g.fillStyle = "#FBF8F1"; rrect(-100, -100, 200, 200, 14); g.fill(); g.shadowColor = "transparent";
+    g.strokeStyle = "#B4501F"; g.lineWidth = 5; rrect(-100, -100, 200, 200, 14); g.stroke(); g.fillStyle = "#2a2420"; g.textAlign = "left"; g.font = "700 40px Inter"; g.fillText("90", -78, -52); g.textAlign = "center"; g.font = "800 100px Playfair"; g.fillText("Th", 0, 38);
+    g.font = "700 38px Inter"; g.fillText("229", 0, 84); g.restore(); regEl("tile", 90, 540, 240, 240, A2 * clamp(tile));
+    const nm = A2 * eo(prog(t, tw("thorium", 0) + .15, tw("thorium", 0) + .7)); if (nm > 0) { g.save(); g.globalAlpha = nm; g.font = "700 38px Inter"; g.letterSpacing = "6px"; g.fillStyle = "#F7D58A"; g.textAlign = "left"; g.fillText("THORIUM", 350, 636); g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.fillStyle = "#9FE8FF"; g.fillText("ONLY 8.4 eV NEEDED", 350, 712); g.restore(); reg("thname", 350, 596, 420, 54, nm, 38, 10); reg("thev", 350, 676, 560, 50, nm, 36, 10); }
+    // the strip
+    const sa = A2 * eo(prog(t, tw("one", 2) - .5, tw("one", 2) + .3)); if (sa > 0 || t > 63) { const sk = A2 * eo(prog(t, tw("exact") - .6, tw("exact") + .3)); g.save(); g.globalAlpha = sk;
+      g.fillStyle = "rgba(10,12,22,.8)"; rrect(SP.x0 - 30, SP.y - 150, SP.x1 - SP.x0 + 60, 290, 22); g.fill();
+      g.fillStyle = visGradient(); g.fillRect(spx(400), SP.y - 22, spx(700) - spx(400), 44);
+      g.fillStyle = "rgba(142,92,255,.28)"; g.fillRect(spx(100), SP.y - 22, spx(400) - spx(100), 44); g.strokeStyle = "rgba(180,150,255,.6)"; g.lineWidth = 2; for (let x = spx(100); x < spx(400); x += 14) { g.beginPath(); g.moveTo(x, SP.y + 22); g.lineTo(x + 14, SP.y - 22); g.stroke(); }
+      g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.textAlign = "left"; g.fillStyle = "#C9A9FF"; g.fillText("ULTRAVIOLET", spx(100), SP.y + 84); g.textAlign = "right"; g.fillStyle = "#F5EFE3"; g.fillText("VISIBLE", spx(700), SP.y + 84); g.restore();
+      regEl("strip", SP.x0 - 30, SP.y - 150, SP.x1 - SP.x0 + 60, 190, sk); reg("uv", spx(100), SP.y + 48, 330, 50, sk, 36, 9);
+      // the hunt: a cursor that scans, misses, and finally locks on 148 nm
+      const hunt = prog(t, tw("for", 0) + .1, tw("hit", 1) - .1), lock = eo(prog(t, tw("hit", 1) - .05, tw("hit", 1) + .3)), target = spx(148);
+      const hx = lerp(spx(560) + Math.sin(t * 2.2) * 90, target, 0) , scan = (hunt < 1) ? (spx(150) + (spx(520) - spx(150)) * (.5 + .5 * Math.sin(t * 1.9 + Math.sin(t * .6) * 2)) * (1 - .55 * hunt) + (target - spx(150)) * .0) : target;
+      const cx = lerp(scan, target, lock);
+      if (t > tw("for", 0) + .1) { g.save(); g.globalAlpha = sk; g.strokeStyle = lock > .5 ? "#7AE0A0" : "#F5EFE3"; g.lineWidth = 4; g.beginPath(); g.moveTo(cx, SP.y - 92); g.lineTo(cx, SP.y + 40); g.stroke(); g.fillStyle = lock > .5 ? "#7AE0A0" : "#F5EFE3"; g.beginPath(); g.moveTo(cx, SP.y - 40); g.lineTo(cx - 14, SP.y - 70); g.lineTo(cx + 14, SP.y - 70); g.closePath(); g.fill(); g.restore(); }
+      // the target needle: one exact colour
+      const ne = eo(prog(t, tw("one", 2), tw("one", 2) + .5)); if (ne > 0) { g.save(); g.globalAlpha = ne * sk; g.strokeStyle = "#C9A9FF"; g.lineWidth = 3; g.setLineDash([8, 8]); g.beginPath(); g.moveTo(target, SP.y - 120); g.lineTo(target, SP.y + 30); g.stroke(); g.setLineDash([]);
+        const pr = (t * .8) % 1; g.strokeStyle = `rgba(201,169,255,${.8 * (1 - pr)})`; g.lineWidth = 4; g.beginPath(); g.arc(target, SP.y, 14 + 56 * pr, 0, 7); g.stroke(); g.restore(); }
+      if (lock > 0) { g.save(); g.globalAlpha = lock; const pr = ((t - tw("hit", 1)) * 1.2) % 1; g.strokeStyle = `rgba(122,224,160,${.9 * (1 - pr)})`; g.lineWidth = 6; g.beginPath(); g.arc(target, SP.y, 30 + 120 * pr, 0, 7); g.stroke(); g.restore(); }
+      // labels that land on their words
+      const chipc = (txt2, t0, t1, y, col, id) => { const a = A2 * win(t, t0, t1, .3, .4); if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = "700 40px Inter"; g.letterSpacing = "4px"; const w2 = g.measureText(txt2).width + 4; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 28, y - 46, w2 + 56, 78, 39); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); g.fillStyle = col; g.textAlign = "center"; g.fillText(txt2, CX + 2, y + 8); g.restore(); reg("chip:" + id, CX - w2 / 2 - 28, y - 46, w2 + 56, 78, a, 40, 10); };
+      chipc("ONE EXACT COLOUR", tw("one", 2) - .05, tw("invisible") - .1, 880, "#C9A9FF", "exact"); chipc("INVISIBLE LIGHT", tw("invisible") - .05, te("light", 1) + .6, 880, "#C9A9FF", "invis");
+      // the hunt: years counter; 2024 hit
+      const ya = A2 * win(t, tw("for", 0) - .05, te("it", 3) + .6, .5, .8); if (ya > 0) { const yr = Math.floor(49 * eio(prog(t, tw("for", 0) + .1, tw("scientists", 2) - .3))); g.save(); g.globalAlpha = ya;
+        g.font = "800 190px Playfair"; g.textAlign = "left"; g.fillStyle = "#F5EFE3"; g.fillText(String(yr), 130, 780); g.font = "700 40px Inter"; g.letterSpacing = "5px"; g.fillStyle = "#F7D58A"; g.fillText("YEARS OF SEARCHING", 130, 850); g.restore(); regEl("years", 110, 600, 520, 280, ya); reg("yrs", 130, 810, 500, 54, ya, 40, 10); }
+      const va = A2 * win(t, tw("2024"), te("it", 3) + .8, .4, .6); if (va > 0) { const kk = eob(prog(t, tw("2024"), tw("2024") + .5)); g.save(); g.globalAlpha = va; g.translate(790, 760); g.scale(.7 + .3 * kk, .7 + .3 * kk);
+        g.fillStyle = "rgba(10,12,22,.9)"; rrect(-190, -110, 380, 240, 20); g.fill(); g.strokeStyle = "#7AE0A0"; g.lineWidth = 3; g.stroke(); g.textAlign = "center"; g.fillStyle = "#7AE0A0"; g.font = "800 90px Playfair"; g.fillText("2024", 0, -14); g.fillStyle = "#F5EFE3"; g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillText("VIENNA · TU WIEN", 0, 40); g.fillStyle = "#9FE8FF"; g.fillText("FIRST LASER HIT", 0, 92); g.restore(); regEl("v2024", 600, 650, 380, 240, va); }
+    }
+  }
+}
+// S - better than today's clocks? Not yet. (a cream chart card)
+function sChart(t) {
+  creamBg(); g.save(); g.globalAlpha = .06; g.globalCompositeOperation = "multiply"; g.drawImage(grain, 0, 0, W, H); g.restore();
+  const CW = 840, CH = 940, TOP = 600, k = eo(prog(t, 87.9, 88.7)); g.save(); g.globalAlpha = k; g.translate(CX, TOP + CH / 2 + (1 - k) * 160);
+  g.shadowColor = "rgba(60,40,20,.28)"; g.shadowBlur = 50; g.shadowOffsetY = 24; g.fillStyle = "#FBF8F1"; g.fillRect(-CW / 2, -CH / 2, CW, CH); g.shadowColor = "transparent"; g.strokeStyle = "#d8cfbd"; g.lineWidth = 2; g.strokeRect(-CW / 2 + 14, -CH / 2 + 14, CW - 28, CH - 28);
+  const base = CH / 2 - 150, bw = 220, x1 = -170, x2 = 170;
+  g.strokeStyle = "#2a2420"; g.lineWidth = 3; g.beginPath(); g.moveTo(-CW / 2 + 60, base); g.lineTo(CW / 2 - 60, base); g.stroke();
+  const ak = eio(prog(t, 88.9, 89.9)), nk = eio(prog(t, 89.0, 90.0));
+  g.fillStyle = "#2a2420"; g.fillRect(x1 - bw / 2, base - 560 * ak, bw, 560 * ak);
+  g.fillStyle = "#F08C32"; g.fillRect(x2 - bw / 2, base - 330 * nk, bw, 330 * nk);
+  g.font = "700 36px Inter"; g.letterSpacing = "2px"; g.textAlign = "center"; g.fillStyle = "#2a2420"; g.fillText("TODAY'S", x1, base + 50); g.fillText("ATOMIC CLOCKS", x1, base + 94); g.fillStyle = "#B4501F"; g.fillText("NUCLEAR", x2, base + 50); g.fillText("CLOCK (NOW)", x2, base + 94);
+  // later: the nuclear bar is predicted to climb far higher (the researchers' estimate), shown breaking out of the card
+  const gk = eio(prog(t, tw("improve") - .1, tw("times", 1) + .5)); if (gk > 0) { g.save(); g.beginPath(); g.rect(-CW / 2, -CH / 2 - 700, CW, CH + 700 - 0); g.clip(); g.strokeStyle = "#B4501F"; g.lineWidth = 6; g.setLineDash([16, 12]); const hh = 330 + gk * 1150; g.strokeRect(x2 - bw / 2, base - hh, bw, hh); g.fillStyle = `rgba(240,140,50,${.35 * gk})`; g.fillRect(x2 - bw / 2, base - hh, bw, hh); g.setLineDash([]); g.restore(); }
+  g.restore();
+  regEl("chartcard", CX - CW / 2, TOP, CW, CH, k);
+  // stamps and the 10,000x counter
+  const st = prog(t, tw("not") - .02, tw("not") + .4); if (st > 0) { g.save(); const s2 = lerp(2.2, 1, eob(clamp(st))); g.globalAlpha = clamp(st * 3) * (1 - eio(prog(t, 90.4, 90.9))); g.translate(CX + 120, 1360); g.rotate(-8 * Math.PI / 180); g.scale(s2, s2); g.font = "600 84px Oswald"; g.letterSpacing = "8px"; const w2 = g.measureText("NOT YET").width + 8; g.strokeStyle = "#C0392B"; g.lineWidth = 7; g.strokeRect(-w2 / 2 - 26, -70, w2 + 52, 104); g.fillStyle = "#C0392B"; g.textAlign = "center"; g.fillText("NOT YET", 4, 4); g.restore(); reg("noty", CX + 120 - 230, 1290, 460, 120, clamp(st * 3) * (1 - eio(prog(t, 90.4, 90.9))), 84, 8); }
+  const ca = win(t, tw("improve") - .1, 94.5, .4, .5); if (ca > 0) { const n = Math.round(10000 * eio(prog(t, tw("10"), te("times", 1) - .05))); g.save(); g.globalAlpha = ca; g.textAlign = "center"; g.font = "800 150px Playfair"; g.fillStyle = "#B4501F"; g.fillText(n.toLocaleString("en-US") + "×", CX, 810); g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.fillStyle = "#6b5718"; g.fillText("RESEARCHERS' ESTIMATE · NOT TO SCALE", CX, 870); g.restore(); reg("tenk", CX - 380, 690, 760, 190, ca, 150, 10); reg("est", CX - 400, 836, 800, 50, ca, 36, 9); }
+}
+
+// ======================================================================
+// timeline: scenes overlap ~1 s during every transition (slow, never abrupt); captions and labels sit on top
+// ======================================================================
+const SC = [
+  { id: "hook", t0: 0, t1: 4.7, f: sHook },
+  { id: "gps", t0: 3.7, t1: 12.8, f: gpsFrame, tr: "push" },
+  { id: "ruler", t0: 11.8, t1: 21.6, f: sRuler, tr: "fade" },
+  { id: "atom1", t0: 20.6, t1: 37.8, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
+  { id: "wind", t0: 36.8, t1: 39.8, f: sWind, tr: "fade" },
+  { id: "atom2", t0: 38.8, t1: 53.0, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
+  { id: "spec", t0: 52.0, t1: 70.9, f: sSpectrum, tr: "fade" },
+  { id: "cry", t0: 69.9, t1: 83.6, f: t => { crystalFrame(t); crystalOverlay(t); }, tr: "fade" },
+  { id: "race", t0: 82.6, t1: 88.6, f: raceFrame, tr: "fade" },
+  { id: "chart", t0: 87.6, t1: 94.9, f: sChart, tr: "fade" },
+  { id: "fin", t0: 93.9, t1: 120, f: finaleFrame, tr: "fade" },
+];
+const CAPS = [
+  { id: "c0", i0: 0, i1: 13, t1: 3.95, size: 66, st: { clock: { hl: "lav" } } },
+  { id: "c1", i0: 14, i1: 23, t1: 7.0, size: 62, st: { atomic: { hl: "lav" } } },
+  { id: "c2", i0: 24, i1: 30, t1: 9.4, size: 66, st: { late: { it: 1, hl: "or" } } },
+  { id: "c3", i0: 31, i1: 34, t1: 12.3, size: 70, st: { farther: { it: 1, hl: "or" } } },
+  { id: "c4", i0: 35, i1: 44, t1: 15.75, size: 62, ink: true, st: { billionth: { it: 1, hl: "or" } } },
+  { id: "c5", i0: 45, i1: 54, t1: 21.3, size: 62, ink: true, st: { tiny: { it: 1, hl: "red" }, off: { it: 1, hl: "red" } } },
+  { id: "c6", i0: 55, i1: 65, t1: 25.2, size: 62, st: { atom: { it: 1, hl: "or" } } },
+  { id: "c7", i0: 66, i1: 73, t1: 27.5, size: 64, st: { atom: { hl: "lav" } } },
+  { id: "c8", i0: 74, i1: 82, t1: 31.2, size: 62, st: { electrons: { it: 1, hl: "or" }, outside: { it: 1, hl: "or" } } },
+  { id: "c9", i0: 83, i1: 85, t1: 33.5, size: 74, st: { exposed: { it: 1, hl: "red" } } },
+  { id: "c10", i0: 95, i1: 102, t1: 39.5, size: 64, ink: true, st: { wind: { it: 1, hl: "or" } } },
+  { id: "c11", i0: 103, i1: 111, t1: 42.5, size: 62 },
+  { id: "c12", i0: 112, i1: 117, t1: 45.05, size: 66, st: { nucleus: { hl: "lav" } } },
+  { id: "c13", i0: 118, i1: 123, t1: 47.0, size: 66, st: { smaller: { it: 1, hl: "or" } } },
+  { id: "c14", i0: 124, i1: 128, t1: 49.6, size: 66 },
+  { id: "c15", i0: 129, i1: 135, t1: 52.3, size: 66, st: { vault: { it: 1, hl: "or" } } },
+  { id: "c16", i0: 136, i1: 145, t1: 57.1, size: 62, st: { huge: { it: 1, hl: "red" } } },
+  { id: "c17", i0: 146, i1: 147, t1: 58.6, size: 78, st: { thorium: { hl: "lav" } } },
+  { id: "c18", i0: 160, i1: 167, t1: 66.6, size: 62, st: { hunted: { it: 1, hl: "or" } } },
+  { id: "c19", i0: 168, i1: 174, t1: 70.4, size: 62, st: { hit: { it: 1, hl: "or" } } },
+  { id: "c20", i0: 175, i1: 180, t1: 72.35, size: 66, st: { crystal: { hl: "lav" } } },
+  { id: "c21", i0: 181, i1: 184, t1: 74.45, size: 72 },
+  { id: "c22", i0: 204, i1: 211, t1: 83.2, size: 64, st: { counting: { it: 1, hl: "or" } } },
+  { id: "c23", i0: 212, i1: 220, t1: 88.3, size: 60, st: { first: { it: 1, hl: "or" } } },
+  { id: "c24", i0: 221, i1: 226, t1: 90.55, size: 66, ink: true, st: { yet: { it: 1, hl: "red" } } },
+  { id: "c25", i0: 227, i1: 235, t1: 94.6, size: 62, ink: true, st: { improve: { it: 1, hl: "or" } } },
+  { id: "c26", i0: 236, i1: 244, t1: 97.2, size: 64, st: { clock: { it: 1, hl: "or" } } },
+  { id: "c27", i0: 245, i1: 252, t1: 1e3, size: 66, st: { tick: { it: 1, hl: "or" }, atom: { it: 1, hl: "or" } } },
+];
+const KICKS = [[0.05, 3.9, "HOW YOUR PHONE FINDS YOU"], [4.4, 12.6, "GPS · ATOMIC CLOCKS"], [12.5, 21.2, "ONE BILLIONTH OF A SECOND", true], [21.7, 25.3, "NATURE · 7 OCTOBER 2026"], [25.9, 36.6, "INSIDE AN ATOMIC CLOCK"],
+  [37.1, 39.4, "A CLOCK IN THE WIND", true], [39.6, 52.4, "INSIDE THE ATOM"], [52.9, 70.5, "THORIUM-229"], [70.8, 83.2, "HOW THE CLOCK WORKS"], [83.8, 88.2, "OCTOBER 2026"], [88.3, 94.5, "THE REALITY CHECK", true]];
+function transition(type, k, A, B) {   // A: outgoing canvas, B: incoming canvas, k: 0..1
+  const e = eio(k); gm.save(); gm.fillStyle = "#000"; gm.fillRect(0, 0, W, H);
+  const zs = (c, s, a, blur = 0, dx = 0, dy = 0) => { gm.save(); gm.globalAlpha = a; if (blur) gm.filter = `blur(${blur}px)`; gm.translate(W / 2 + dx, H / 2 + dy); gm.scale(s, s); gm.drawImage(c, -W / 2, -H / 2); gm.restore(); };
+  if (type === "push") { zs(A, lerp(1, 1.22, e), 1); zs(B, lerp(.9, 1, e), e); }
+  else { zs(A, lerp(1, 1.03, e), 1); zs(B, lerp(1.03, 1, e), e); }   // a slow cross-dissolve with a breath of zoom
+  gm.restore();
+}
+function filmGrain(t) { gm.save(); gm.globalAlpha = .04; gm.globalCompositeOperation = "overlay"; const o = (t * 997 | 0) % 512; for (let y = -o; y < H; y += 512) for (let x = -(o % 512); x < W; x += 512) gm.drawImage(grain, x, y); gm.restore(); }
+window.seek = function (t) {
+  BOXES = []; gm.setTransform(1, 0, 0, 1, 0, 0); gm.globalAlpha = 1; gm.filter = "none";
+  const act = SC.filter(s => t >= s.t0 && t < s.t1);
+  if (act.length === 1) { g = gm; g.save(); act[0].f(t); g.restore(); }
+  else if (act.length >= 2) { const [A, B] = act.slice(-2); g = ga; ga.setTransform(1, 0, 0, 1, 0, 0); g.save(); A.f(t); g.restore(); g = gb; gb.setTransform(1, 0, 0, 1, 0, 0); g.save(); B.f(t); g.restore(); g = gm; transition(B.tr, prog(t, B.t0, A.t1), bufA, bufB); }
+  g = gm;
+  for (const c of CAPS) caption(t, c);
+  for (const [a, b, s, cream] of KICKS) kicker(t, s, a, b, 318, cream);
+  filmGrain(t);
+  return BOXES;
+};
+window.DUR = DUR; window.SAFE = SAFE; window.CUES = [];
+window.ready = false;
+Promise.all([...loads, buildEarth(), document.fonts.load("800 80px Playfair"), document.fonts.load("italic 800 80px Playfair"), document.fonts.load("700 30px Inter"), document.fonts.load("600 60px Oswald")])
+  .then(() => { buildAtom(); buildCrystal(); window.seek(0); window.ready = true; });
+
+</script></body></html>

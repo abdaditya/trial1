@@ -1,0 +1,20 @@
+<!doctype html><meta charset=utf-8><style>
+@font-face{font-family:P;src:url(../fonts/PlayfairDisplay-800.woff2);font-weight:800}
+@font-face{font-family:P;src:url(../fonts/PlayfairDisplay-800i.woff2);font-weight:800;font-style:italic}
+@font-face{font-family:I;src:url(../fonts/Inter-700.woff2);font-weight:700}
+body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#05060b;position:relative;font-family:P}
+.k{position:absolute;top:300px;width:100%;text-align:center;font:700 30px I;letter-spacing:6px;color:#FFC55C}
+.c{position:absolute;top:350px;width:100%;text-align:center;font:800 76px/1.15 P;color:#F5EFE3;text-shadow:0 4px 30px #000}
+.c i{color:#FFC55C}
+.abs{position:absolute}
+</style><body>
+<script>
+const o=location.hash.slice(1);
+const cap='<div class=k>● HOW YOUR PHONE FINDS YOU</div><div class=c>Your phone doesn’t<br>find you with a <i>map.</i></div>';
+let h='';
+if(o=='A'){h=`<div class=abs style="inset:0;background:radial-gradient(ellipse at 50% 70%,#0a1a3a,#05060b 70%)"></div><img class=abs src=sat.jpg style="left:-40px;top:560px;width:1160px;mix-blend-mode:screen">`+cap;}
+if(o=='B'){h=`<div class=abs style="inset:0;background:radial-gradient(ellipse at 50% 60%,#0b1c3d,#05060b 70%)"></div><img class=abs src=globe_day.png style="left:-60px;top:640px;width:1200px"><div class=abs style="left:60px;top:640px;width:960px;height:960px;border-radius:50%;box-shadow:0 0 90px 10px #4a8cff55,inset 0 0 60px #4a8cff66"></div><div class=abs style="left:300px;top:1080px;width:26px;height:26px;border-radius:50%;background:#FFC55C;box-shadow:0 0 0 14px #FFC55C44,0 0 0 40px #FFC55C22,0 0 40px #FFC55C"></div>`+cap;}
+if(o=='C'){h=`<div class=abs style="inset:0;background:radial-gradient(ellipse at 50% 60%,#1a1230,#05060b 70%)"></div><img class=abs src=globe_night.png style="left:-60px;top:640px;width:1200px"><div class=abs style="left:60px;top:640px;width:960px;height:960px;border-radius:50%;box-shadow:0 0 90px 10px #ffb24744,inset 0 0 70px #000"></div>`+cap;}
+if(o=='D'){h=`<div class=abs style="inset:0;background:#F3EBDD"></div><img class=abs src=const.jpg style="left:20px;top:620px;width:1040px;mix-blend-mode:multiply">`+cap.replace('F5EFE3','').replace('class=c','class=c style="color:#16121c;text-shadow:none"').replace('FFC55C','B4501F');}
+document.body.innerHTML=h;
+</script>
