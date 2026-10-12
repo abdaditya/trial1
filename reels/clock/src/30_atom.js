@@ -29,13 +29,13 @@ function buildAtom() {
   // things that disturb the outside: heat / shaking / magnets / (anything) as small glowing particles
   for (let i = 0; i < 70; i++) { const s = new THREE.Sprite(spriteMat(i % 3 === 0 ? REDG : GOLD, 0)); s.scale.setScalar(.12); ATOM.add(s); A3.parts.push({ s, dir: new THREE.Vector3(R() - .5, R() - .5, R() - .5).normalize(), ph: R(), stop: .55 + R() * .45 }); }
 }
-const ATOM_DOMAIN = { show: [20.9, 99], dive: [39.2, 44.3] };
+const ATOM_DOMAIN = { show: [24.4, 99], dive: [39.2, 44.3] };
 function atomFrame(t) {
-  const cam = track([[20.9, [20, 18, 11.5]], [25.0, [36, 16, 9.6]], [27.4, [52, 14, 8.2]], [33.0, [72, 18, 8.4]], [37.4, [92, 16, 8.8]],
+  const cam = track([[24.4, [20, 18, 11.5]], [25.0, [36, 16, 9.6]], [27.4, [52, 14, 8.2]], [33.0, [72, 18, 8.4]], [37.4, [92, 16, 8.8]],
     [39.2, [92, 16, 8.8]], [44.3, [150, 8, .95]], [45.4, [160, 8, .95]], [48.6, [188, 14, 6.6]], [49.7, [196, 12, 4.4]], [52.5, [212, 8, 4.0]]], t);
   const az = cam[0] * Math.PI / 180, el = cam[1] * Math.PI / 180, d = cam[2];
   CAM.fov = 35; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -190, W, H); CAM.up.set(0, 1, 0); CAM.position.set(d * Math.cos(el) * Math.sin(az), d * Math.sin(el), d * Math.cos(el) * Math.cos(az)); CAM.lookAt(0, 0, 0); CAM.updateProjectionMatrix();
-  const appear = eo(prog(t, 21.4, 23.2)), ticks = prog(t, 25.34, 99), tickP = ((t - 25.34) / .9) % 1, flash = ticks > 0 ? Math.exp(-7 * tickP) : 0;
+  const appear = eo(prog(t, 24.9, 26.1)), ticks = prog(t, 25.34, 99), tickP = ((t - 25.34) / .9) % 1, flash = ticks > 0 ? Math.exp(-7 * tickP) : 0;
   const dist = (t < 38 ? eio(prog(t, 33.63, 34.9)) * (1 - eio(prog(t, 36.2, 36.9))) : 0), hl = win(t, tw("electrons"), te("outside") + .1, .3, .5);
   A3.root.scale.setScalar(Math.max(.001, appear));
   // shaking is the whole atom; the magnet tilts the orbits
@@ -73,7 +73,7 @@ function atomOverlay(t) {
     g.save(); g.globalAlpha = wa; const y0 = 1450, x0 = 130, x1 = 920; g.fillStyle = "rgba(10,12,22,.62)"; rrect(x0 - 20, y0 - 56, x1 - x0 + 40, 130, 18); g.fill();
     g.strokeStyle = dist > .25 ? "#FF8A6A" : "#FFC55C"; g.lineWidth = 5; g.lineJoin = "round"; g.beginPath();
     for (let x = x0; x <= x1; x += 4) { const u = (x - x0) / (x1 - x0), ph = (u * 7 - (t - 25.34) * 1.1) * Math.PI * 2, amp = 40 * (1 + dist * (Math.sin(ph * 2.7 + t * 9) * .6)), yy = y0 - Math.sin(ph + dist * Math.sin(t * 13 + u * 40) * 1.4) * amp + dist * (Math.sin(t * 31 + u * 90) * 12); x === x0 ? g.moveTo(x, yy) : g.lineTo(x, yy); } g.stroke();
-    g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = dist > .25 ? "#FF8A6A" : "#F5EFE3"; g.fillText(dist > .25 ? "OFF-BEAT" : "TICK · TICK · TICK", x0, y0 - 92); g.restore(); regEl("wave", x0 - 20, y0 - 56, x1 - x0 + 40, 130, wa); reg("wavelbl", x0, y0 - 134, 520, 48, wa, 36, 9); }
+    g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = dist > .25 ? "#FF8A6A" : "#F5EFE3";  g.restore(); regEl("wave", x0 - 20, y0 - 56, x1 - x0 + 40, 130, wa); 0; }
   // chips: heat / shaking / magnet land on their words
   const chip = (txt2, x, y, col, tt, draw, id) => { const a = win(t, tt - .05, 36.6, .3, .45) * eo(prog(t, tt - .05, tt + .35)); if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = "700 38px Inter"; g.letterSpacing = "4px"; const tw2 = g.measureText(txt2).width + 4, bw = tw2 + 110;
     g.fillStyle = "rgba(12,10,16,.9)"; rrect(x, y, bw, 78, 39); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); draw(x + 46, y + 39, col); g.fillStyle = col; g.textAlign = "left"; g.fillText(txt2, x + 84, y + 52); g.restore(); reg("chip:" + id, x, y, bw, 78, a, 38, 10); return bw; };

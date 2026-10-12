@@ -1,17 +1,20 @@
 // ======================================================================
 // timeline: scenes overlap ~1 s during every transition (slow, never abrupt); captions and labels sit on top
 // ======================================================================
+// slow camera push on the flat scenes so nothing ever sits still
+const zw = (f, t0, t1, z0, z1) => t => { const z = lerp(z0, z1, eio(prog(t, t0, t1))); g.translate(W / 2, H * .5); g.scale(z, z); g.translate(-W / 2, -H * .5); f(t); };
 const SC = [
   { id: "hook", t0: 0, t1: 4.7, f: sHook },
   { id: "gps", t0: 3.7, t1: 12.8, f: gpsFrame, tr: "push" },
-  { id: "ruler", t0: 11.8, t1: 21.6, f: sRuler, tr: "fade" },
-  { id: "atom1", t0: 20.6, t1: 37.8, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
-  { id: "wind", t0: 36.8, t1: 39.8, f: sWind, tr: "fade" },
+  { id: "ruler", t0: 11.8, t1: 21.6, f: zw(sRuler, 11.8, 21.6, 1.0, 1.04), tr: "fade" },
+  { id: "paper", t0: 20.6, t1: 25.9, f: sPaper, tr: "fade" },
+  { id: "atom1", t0: 24.9, t1: 37.8, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
+  { id: "wind", t0: 36.8, t1: 39.8, f: zw(sWind, 36.8, 39.8, 1.0, 1.04), tr: "fade" },
   { id: "atom2", t0: 38.8, t1: 53.0, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
-  { id: "spec", t0: 52.0, t1: 70.9, f: sSpectrum, tr: "fade" },
+  { id: "spec", t0: 52.0, t1: 70.9, f: zw(sSpectrum, 52, 70.9, 1.0, 1.05), tr: "fade" },
   { id: "cry", t0: 69.9, t1: 83.6, f: t => { crystalFrame(t); crystalOverlay(t); }, tr: "fade" },
   { id: "race", t0: 82.6, t1: 88.6, f: raceFrame, tr: "fade" },
-  { id: "chart", t0: 87.6, t1: 94.9, f: sChart, tr: "fade" },
+  { id: "chart", t0: 87.6, t1: 94.9, f: zw(sChart, 87.6, 94.9, 1.04, 1.0), tr: "fade" },
   { id: "fin", t0: 93.9, t1: 120, f: finaleFrame, tr: "fade" },
 ];
 const CAPS = [
@@ -21,7 +24,6 @@ const CAPS = [
   { id: "c3", i0: 31, i1: 34, t1: 12.3, size: 70, st: { farther: { it: 1, hl: "or" } } },
   { id: "c4", i0: 35, i1: 44, t1: 15.75, size: 62, ink: true, st: { billionth: { it: 1, hl: "or" } } },
   { id: "c5", i0: 45, i1: 54, t1: 21.3, size: 62, ink: true, st: { tiny: { it: 1, hl: "red" }, off: { it: 1, hl: "red" } } },
-  { id: "c6", i0: 55, i1: 65, t1: 25.2, size: 62, st: { atom: { it: 1, hl: "or" } } },
   { id: "c7", i0: 66, i1: 73, t1: 27.5, size: 64, st: { atom: { hl: "lav" } } },
   { id: "c8", i0: 74, i1: 82, t1: 31.2, size: 62, st: { electrons: { it: 1, hl: "or" }, outside: { it: 1, hl: "or" } } },
   { id: "c9", i0: 83, i1: 85, t1: 33.5, size: 74, st: { exposed: { it: 1, hl: "red" } } },
@@ -53,6 +55,13 @@ function transition(type, k, A, B) {   // A: outgoing canvas, B: incoming canvas
   else { zs(A, lerp(1, 1.03, e), 1); zs(B, lerp(1.03, 1, e), e); }   // a slow cross-dissolve with a breath of zoom
   gm.restore();
 }
+function lightLeak(t) {   // a very slight warm light drifting across the frame
+  gm.save(); gm.globalCompositeOperation = "screen";
+  const x = W * (.5 + .5 * Math.sin(t * .23)), y = H * (.22 + .1 * Math.cos(t * .17)), r = gm.createRadialGradient(x, y, 0, x, y, 950);
+  r.addColorStop(0, "rgba(255,175,95,.14)"); r.addColorStop(.5, "rgba(255,120,150,.05)"); r.addColorStop(1, "rgba(255,120,150,0)"); gm.fillStyle = r; gm.fillRect(0, 0, W, H);
+  const x2 = W * (.5 - .5 * Math.sin(t * .19 + 1)), y2 = H * (.85 + .06 * Math.sin(t * .13)), r2 = gm.createRadialGradient(x2, y2, 0, x2, y2, 800);
+  r2.addColorStop(0, "rgba(120,170,255,.10)"); r2.addColorStop(1, "rgba(120,170,255,0)"); gm.fillStyle = r2; gm.fillRect(0, 0, W, H); gm.restore();
+}
 function filmGrain(t) { gm.save(); gm.globalAlpha = .04; gm.globalCompositeOperation = "overlay"; const o = (t * 997 | 0) % 512; for (let y = -o; y < H; y += 512) for (let x = -(o % 512); x < W; x += 512) gm.drawImage(grain, x, y); gm.restore(); }
 window.seek = function (t) {
   BOXES = []; gm.setTransform(1, 0, 0, 1, 0, 0); gm.globalAlpha = 1; gm.filter = "none";
@@ -61,8 +70,7 @@ window.seek = function (t) {
   else if (act.length >= 2) { const [A, B] = act.slice(-2); g = ga; ga.setTransform(1, 0, 0, 1, 0, 0); g.save(); A.f(t); g.restore(); g = gb; gb.setTransform(1, 0, 0, 1, 0, 0); g.save(); B.f(t); g.restore(); g = gm; transition(B.tr, prog(t, B.t0, A.t1), bufA, bufB); }
   g = gm;
   for (const c of CAPS) caption(t, c);
-  for (const [a, b, s, cream] of KICKS) kicker(t, s, a, b, 318, cream);
-  filmGrain(t);
+    lightLeak(t); filmGrain(t);
   return BOXES;
 };
 window.DUR = DUR; window.SAFE = SAFE; window.CUES = [];

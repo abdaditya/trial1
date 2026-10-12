@@ -333,6 +333,38 @@ function sRuler(t) {
 }
 
 // ======================================================================
+// the newspaper: "This month, scientists built a clock that ticks inside the atom." is the front-page headline, typed word by word
+// ======================================================================
+function sPaper(t) {
+  darkBg(1);
+  const T0 = 20.8, k = eob(prog(t, T0, T0 + 1.5)), drift = prog(t, T0, 25.8), z = lerp(1.0, 1.07, eio(drift));
+  const PX = 110, PW = 830, PY = 330, PH = 1130;
+  g.save(); g.translate(W / 2, H / 2 + 20); g.scale(z, z); g.rotate((-.012 + .012 * eo(prog(t, T0, T0 + 2.2))) ); g.translate(-W / 2, -H / 2 - 20 + (1 - k) * 1500);
+  g.shadowColor = "rgba(0,0,0,.65)"; g.shadowBlur = 70; g.shadowOffsetY = 30; g.fillStyle = "#EFE7D6"; g.fillRect(PX, PY, PW, PH); g.shadowColor = "transparent";
+  const gr = g.createLinearGradient(PX, PY, PX + PW, PY + PH); gr.addColorStop(0, "rgba(255,252,240,.7)"); gr.addColorStop(1, "rgba(200,185,155,.35)"); g.fillStyle = gr; g.fillRect(PX, PY, PW, PH);
+  // masthead
+  g.fillStyle = "#16121c"; g.fillRect(PX + 40, PY + 40, PW - 80, 4); g.fillRect(PX + 40, PY + 136, PW - 80, 2);
+  g.font = "800 54px Playfair"; g.textAlign = "center"; g.letterSpacing = "4px"; g.fillText("ZBACKTRACK STORIES", PX + PW / 2 + 3, PY + 108);
+  g.font = "700 22px Inter"; g.letterSpacing = "5px"; g.fillStyle = "#6b5a3a"; g.fillText("SCIENCE · OCTOBER 2026", PX + PW / 2 + 2, PY + 176); g.fillStyle = "#16121c"; g.fillRect(PX + 40, PY + 196, PW - 80, 2);
+  // headline = the voice, word by word
+  g.font = "800 88px Playfair"; g.letterSpacing = "0px"; g.textAlign = "left";
+  const words = []; for (let i = 55; i <= 65; i++) words.push([WD[i][0], WD[i][1]]);
+  const maxW = PW - 100, lines = [[]]; let lw = 0;
+  for (const w of words) { const wd = g.measureText(w[0] + " ").width; if (lw + wd > maxW && lines[lines.length - 1].length) { lines.push([]); lw = 0; } lines[lines.length - 1].push([...w, wd]); lw += wd; }
+  const HY = PY + 330; let hx0 = 1e9, hx1 = 0;
+  lines.forEach((ln, li) => { let x = PX + 50; for (const [w, tt, wd] of ln) { const a = eo(prog(t, tt - .04, tt + .28)); if (a > 0) { g.save(); g.globalAlpha = a; const key = w.replace(/[^a-z]/gi, "").toLowerCase();
+        if (key === "atom") { g.fillStyle = "rgba(185,160,255,.75)"; g.fillRect(x - 6, HY + li * 100 - 66, g.measureText(w).width + 12, 86); }
+        g.fillStyle = key === "inside" ? "#9A3F14" : "#16121c"; if (key === "inside") g.font = "italic 800 88px Playfair"; g.fillText(w, x, HY + li * 100 + (1 - a) * 14); g.restore(); g.font = "800 88px Playfair"; hx0 = Math.min(hx0, x); hx1 = Math.max(hx1, x + wd); } x += wd; } });
+  g.fillStyle = "#16121c"; g.fillRect(PX + 40, HY + lines.length * 100 + 10, 220, 5);
+  // a halftone photo of the planet the clocks work for (real NASA Blue Marble), hung under the headline
+  const pa = eo(prog(t, 22.9, 24.0)); if (pa > 0) { g.save(); g.globalAlpha = pa; const ix = PX + 50, iy = HY + lines.length * 100 + 50, iw = PW - 100, ih = Math.min(470, PY + PH - 50 - iy); g.beginPath(); g.rect(ix, iy, iw, ih); g.clip();
+    const im = IM.gps3; if (im && im.naturalWidth) { g.filter = "grayscale(1) contrast(1.25) brightness(1.05) sepia(.35)"; g.fillStyle = "#05060b"; g.fillRect(ix, iy, iw, ih); g.drawImage(im, ix + iw / 2 - 340, iy + ih / 2 - .43 * 680, 680, 680); g.filter = "none"; }
+    g.globalCompositeOperation = "multiply"; g.fillStyle = "rgba(255,240,205,.5)"; g.fillRect(ix, iy, iw, ih); g.restore(); }
+  g.restore();
+  regEl("paper", PX, PY, PW, PH, (k > .5 && t > 21.8 && t < 24.9) ? 1 : 0);
+}
+
+// ======================================================================
 // 3D atom: electrons on the outside, a tiny nucleus inside, a vault that locks it in
 // ======================================================================
 const ATOM = new THREE.Scene(); const A3 = { el: [], ring: [], parts: [] };
@@ -363,13 +395,13 @@ function buildAtom() {
   // things that disturb the outside: heat / shaking / magnets / (anything) as small glowing particles
   for (let i = 0; i < 70; i++) { const s = new THREE.Sprite(spriteMat(i % 3 === 0 ? REDG : GOLD, 0)); s.scale.setScalar(.12); ATOM.add(s); A3.parts.push({ s, dir: new THREE.Vector3(R() - .5, R() - .5, R() - .5).normalize(), ph: R(), stop: .55 + R() * .45 }); }
 }
-const ATOM_DOMAIN = { show: [20.9, 99], dive: [39.2, 44.3] };
+const ATOM_DOMAIN = { show: [24.4, 99], dive: [39.2, 44.3] };
 function atomFrame(t) {
-  const cam = track([[20.9, [20, 18, 11.5]], [25.0, [36, 16, 9.6]], [27.4, [52, 14, 8.2]], [33.0, [72, 18, 8.4]], [37.4, [92, 16, 8.8]],
+  const cam = track([[24.4, [20, 18, 11.5]], [25.0, [36, 16, 9.6]], [27.4, [52, 14, 8.2]], [33.0, [72, 18, 8.4]], [37.4, [92, 16, 8.8]],
     [39.2, [92, 16, 8.8]], [44.3, [150, 8, .95]], [45.4, [160, 8, .95]], [48.6, [188, 14, 6.6]], [49.7, [196, 12, 4.4]], [52.5, [212, 8, 4.0]]], t);
   const az = cam[0] * Math.PI / 180, el = cam[1] * Math.PI / 180, d = cam[2];
   CAM.fov = 35; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -190, W, H); CAM.up.set(0, 1, 0); CAM.position.set(d * Math.cos(el) * Math.sin(az), d * Math.sin(el), d * Math.cos(el) * Math.cos(az)); CAM.lookAt(0, 0, 0); CAM.updateProjectionMatrix();
-  const appear = eo(prog(t, 21.4, 23.2)), ticks = prog(t, 25.34, 99), tickP = ((t - 25.34) / .9) % 1, flash = ticks > 0 ? Math.exp(-7 * tickP) : 0;
+  const appear = eo(prog(t, 24.9, 26.1)), ticks = prog(t, 25.34, 99), tickP = ((t - 25.34) / .9) % 1, flash = ticks > 0 ? Math.exp(-7 * tickP) : 0;
   const dist = (t < 38 ? eio(prog(t, 33.63, 34.9)) * (1 - eio(prog(t, 36.2, 36.9))) : 0), hl = win(t, tw("electrons"), te("outside") + .1, .3, .5);
   A3.root.scale.setScalar(Math.max(.001, appear));
   // shaking is the whole atom; the magnet tilts the orbits
@@ -407,7 +439,7 @@ function atomOverlay(t) {
     g.save(); g.globalAlpha = wa; const y0 = 1450, x0 = 130, x1 = 920; g.fillStyle = "rgba(10,12,22,.62)"; rrect(x0 - 20, y0 - 56, x1 - x0 + 40, 130, 18); g.fill();
     g.strokeStyle = dist > .25 ? "#FF8A6A" : "#FFC55C"; g.lineWidth = 5; g.lineJoin = "round"; g.beginPath();
     for (let x = x0; x <= x1; x += 4) { const u = (x - x0) / (x1 - x0), ph = (u * 7 - (t - 25.34) * 1.1) * Math.PI * 2, amp = 40 * (1 + dist * (Math.sin(ph * 2.7 + t * 9) * .6)), yy = y0 - Math.sin(ph + dist * Math.sin(t * 13 + u * 40) * 1.4) * amp + dist * (Math.sin(t * 31 + u * 90) * 12); x === x0 ? g.moveTo(x, yy) : g.lineTo(x, yy); } g.stroke();
-    g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = dist > .25 ? "#FF8A6A" : "#F5EFE3"; g.fillText(dist > .25 ? "OFF-BEAT" : "TICK · TICK · TICK", x0, y0 - 92); g.restore(); regEl("wave", x0 - 20, y0 - 56, x1 - x0 + 40, 130, wa); reg("wavelbl", x0, y0 - 134, 520, 48, wa, 36, 9); }
+    g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = dist > .25 ? "#FF8A6A" : "#F5EFE3";  g.restore(); regEl("wave", x0 - 20, y0 - 56, x1 - x0 + 40, 130, wa); 0; }
   // chips: heat / shaking / magnet land on their words
   const chip = (txt2, x, y, col, tt, draw, id) => { const a = win(t, tt - .05, 36.6, .3, .45) * eo(prog(t, tt - .05, tt + .35)); if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = "700 38px Inter"; g.letterSpacing = "4px"; const tw2 = g.measureText(txt2).width + 4, bw = tw2 + 110;
     g.fillStyle = "rgba(12,10,16,.9)"; rrect(x, y, bw, 78, 39); g.fill(); g.strokeStyle = col; g.lineWidth = 3; g.stroke(); draw(x + 46, y + 39, col); g.fillStyle = col; g.textAlign = "left"; g.fillText(txt2, x + 84, y + 52); g.restore(); reg("chip:" + id, x, y, bw, 78, a, 38, 10); return bw; };
@@ -596,17 +628,20 @@ function sChart(t) {
 // ======================================================================
 // timeline: scenes overlap ~1 s during every transition (slow, never abrupt); captions and labels sit on top
 // ======================================================================
+// slow camera push on the flat scenes so nothing ever sits still
+const zw = (f, t0, t1, z0, z1) => t => { const z = lerp(z0, z1, eio(prog(t, t0, t1))); g.translate(W / 2, H * .5); g.scale(z, z); g.translate(-W / 2, -H * .5); f(t); };
 const SC = [
   { id: "hook", t0: 0, t1: 4.7, f: sHook },
   { id: "gps", t0: 3.7, t1: 12.8, f: gpsFrame, tr: "push" },
-  { id: "ruler", t0: 11.8, t1: 21.6, f: sRuler, tr: "fade" },
-  { id: "atom1", t0: 20.6, t1: 37.8, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
-  { id: "wind", t0: 36.8, t1: 39.8, f: sWind, tr: "fade" },
+  { id: "ruler", t0: 11.8, t1: 21.6, f: zw(sRuler, 11.8, 21.6, 1.0, 1.04), tr: "fade" },
+  { id: "paper", t0: 20.6, t1: 25.9, f: sPaper, tr: "fade" },
+  { id: "atom1", t0: 24.9, t1: 37.8, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
+  { id: "wind", t0: 36.8, t1: 39.8, f: zw(sWind, 36.8, 39.8, 1.0, 1.04), tr: "fade" },
   { id: "atom2", t0: 38.8, t1: 53.0, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
-  { id: "spec", t0: 52.0, t1: 70.9, f: sSpectrum, tr: "fade" },
+  { id: "spec", t0: 52.0, t1: 70.9, f: zw(sSpectrum, 52, 70.9, 1.0, 1.05), tr: "fade" },
   { id: "cry", t0: 69.9, t1: 83.6, f: t => { crystalFrame(t); crystalOverlay(t); }, tr: "fade" },
   { id: "race", t0: 82.6, t1: 88.6, f: raceFrame, tr: "fade" },
-  { id: "chart", t0: 87.6, t1: 94.9, f: sChart, tr: "fade" },
+  { id: "chart", t0: 87.6, t1: 94.9, f: zw(sChart, 87.6, 94.9, 1.04, 1.0), tr: "fade" },
   { id: "fin", t0: 93.9, t1: 120, f: finaleFrame, tr: "fade" },
 ];
 const CAPS = [
@@ -616,7 +651,6 @@ const CAPS = [
   { id: "c3", i0: 31, i1: 34, t1: 12.3, size: 70, st: { farther: { it: 1, hl: "or" } } },
   { id: "c4", i0: 35, i1: 44, t1: 15.75, size: 62, ink: true, st: { billionth: { it: 1, hl: "or" } } },
   { id: "c5", i0: 45, i1: 54, t1: 21.3, size: 62, ink: true, st: { tiny: { it: 1, hl: "red" }, off: { it: 1, hl: "red" } } },
-  { id: "c6", i0: 55, i1: 65, t1: 25.2, size: 62, st: { atom: { it: 1, hl: "or" } } },
   { id: "c7", i0: 66, i1: 73, t1: 27.5, size: 64, st: { atom: { hl: "lav" } } },
   { id: "c8", i0: 74, i1: 82, t1: 31.2, size: 62, st: { electrons: { it: 1, hl: "or" }, outside: { it: 1, hl: "or" } } },
   { id: "c9", i0: 83, i1: 85, t1: 33.5, size: 74, st: { exposed: { it: 1, hl: "red" } } },
@@ -648,6 +682,13 @@ function transition(type, k, A, B) {   // A: outgoing canvas, B: incoming canvas
   else { zs(A, lerp(1, 1.03, e), 1); zs(B, lerp(1.03, 1, e), e); }   // a slow cross-dissolve with a breath of zoom
   gm.restore();
 }
+function lightLeak(t) {   // a very slight warm light drifting across the frame
+  gm.save(); gm.globalCompositeOperation = "screen";
+  const x = W * (.5 + .5 * Math.sin(t * .23)), y = H * (.22 + .1 * Math.cos(t * .17)), r = gm.createRadialGradient(x, y, 0, x, y, 950);
+  r.addColorStop(0, "rgba(255,175,95,.14)"); r.addColorStop(.5, "rgba(255,120,150,.05)"); r.addColorStop(1, "rgba(255,120,150,0)"); gm.fillStyle = r; gm.fillRect(0, 0, W, H);
+  const x2 = W * (.5 - .5 * Math.sin(t * .19 + 1)), y2 = H * (.85 + .06 * Math.sin(t * .13)), r2 = gm.createRadialGradient(x2, y2, 0, x2, y2, 800);
+  r2.addColorStop(0, "rgba(120,170,255,.10)"); r2.addColorStop(1, "rgba(120,170,255,0)"); gm.fillStyle = r2; gm.fillRect(0, 0, W, H); gm.restore();
+}
 function filmGrain(t) { gm.save(); gm.globalAlpha = .04; gm.globalCompositeOperation = "overlay"; const o = (t * 997 | 0) % 512; for (let y = -o; y < H; y += 512) for (let x = -(o % 512); x < W; x += 512) gm.drawImage(grain, x, y); gm.restore(); }
 window.seek = function (t) {
   BOXES = []; gm.setTransform(1, 0, 0, 1, 0, 0); gm.globalAlpha = 1; gm.filter = "none";
@@ -656,8 +697,7 @@ window.seek = function (t) {
   else if (act.length >= 2) { const [A, B] = act.slice(-2); g = ga; ga.setTransform(1, 0, 0, 1, 0, 0); g.save(); A.f(t); g.restore(); g = gb; gb.setTransform(1, 0, 0, 1, 0, 0); g.save(); B.f(t); g.restore(); g = gm; transition(B.tr, prog(t, B.t0, A.t1), bufA, bufB); }
   g = gm;
   for (const c of CAPS) caption(t, c);
-  for (const [a, b, s, cream] of KICKS) kicker(t, s, a, b, 318, cream);
-  filmGrain(t);
+    lightLeak(t); filmGrain(t);
   return BOXES;
 };
 window.DUR = DUR; window.SAFE = SAFE; window.CUES = [];
