@@ -23,7 +23,7 @@ const SP = { x0: 120, x1: 920, y: 1100 };   // spectrum strip; 100-800 nm
 const spx = nm => SP.x0 + (nm - 100) / 700 * (SP.x1 - SP.x0);
 function visGradient() { const gr = g.createLinearGradient(spx(400), 0, spx(700), 0); [[0, "#7a2cff"], [.18, "#2f5bff"], [.38, "#27d3ff"], [.52, "#37e06b"], [.7, "#ffe04a"], [.85, "#ff8a2a"], [1, "#ff3b2a"]].forEach(([o, c]) => gr.addColorStop(o, c)); return gr; }
 function sSpectrum(t) {
-  darkBg(.3); g.save(); g.globalAlpha = .05; g.globalCompositeOperation = "overlay"; g.drawImage(grain, 0, 0, W, H); g.restore();
+  labBg(IM.nistion, .5, .5, 1.0, 1.12, 52, 70.9, t, .32, 7);
   // ---- A: the energy needed (huge for a usual nucleus, tiny for thorium) ----
   const A = win(t, 52.2, tw("except", 0) + .2, .6, .8) , A2 = win(t, tw("except", 0) - .1, 62.9, .7, .8);
   if (A > 0) { g.save(); g.globalAlpha = A; const bx = 300, by = 1380, bh = 700, bw = 150, k = eio(prog(t, tw("huge") - .5, tw("huge") + .9));
@@ -44,7 +44,7 @@ function sSpectrum(t) {
       g.fillStyle = visGradient(); g.fillRect(spx(400), SP.y - 22, spx(700) - spx(400), 44);
       g.fillStyle = "rgba(142,92,255,.28)"; g.fillRect(spx(100), SP.y - 22, spx(400) - spx(100), 44); g.strokeStyle = "rgba(180,150,255,.6)"; g.lineWidth = 2; for (let x = spx(100); x < spx(400); x += 14) { g.beginPath(); g.moveTo(x, SP.y + 22); g.lineTo(x + 14, SP.y - 22); g.stroke(); }
       g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.textAlign = "left"; g.fillStyle = "#C9A9FF"; g.fillText("ULTRAVIOLET", spx(100), SP.y + 84); g.textAlign = "right"; g.fillStyle = "#F5EFE3"; g.fillText("VISIBLE", spx(700), SP.y + 84); g.restore();
-      regEl("strip", SP.x0 - 30, SP.y - 150, SP.x1 - SP.x0 + 60, 190, sk); reg("uv", spx(100), SP.y + 48, 330, 50, sk, 36, 9);
+      regEl("strip", SP.x0 - 30, SP.y - 150, SP.x1 - SP.x0 + 60, 178, sk); reg("uv", spx(100), SP.y + 48, 330, 50, sk, 36, 9);
       // the hunt: a cursor that scans, misses, and finally locks on 148 nm
       const hunt = prog(t, tw("for", 0) + .1, tw("hit", 1) - .1), lock = eo(prog(t, tw("hit", 1) - .05, tw("hit", 1) + .3)), target = spx(148);
       const hx = lerp(spx(560) + Math.sin(t * 2.2) * 90, target, 0) , scan = (hunt < 1) ? (spx(150) + (spx(520) - spx(150)) * (.5 + .5 * Math.sin(t * 1.9 + Math.sin(t * .6) * 2)) * (1 - .55 * hunt) + (target - spx(150)) * .0) : target;

@@ -50,7 +50,7 @@ function crystalFrame(t) {
   // wave fronts
   const wk = win(t, tw("count", 1) - .1, 83.3, .35, .5);
   C3.fronts.forEach((m, i) => { const u = (((t - 80.4) * .85 + i * .0538) % 1 + 1) % 1, y = lerp(YL - .05, YC + .02, u); m.position.y = y; m.material.opacity = wk * on * .85 * Math.sin(Math.PI * u) ** .6; m.material.color.copy(col).offsetHSL(0, 0, .15); m.scale.setScalar(1 + .6 * Math.sin(Math.PI * u)); });
-  draw3D(CRY, 0x04050b); shade(.7, 760, .45);
+  draw3D(CRY, 0x04050b, () => labBg(IM.jila, .25, .5, 1.05, 1.0, 69.9, 83.6, t, .45, 5)); shade(.7, 760, .45);
   return { ab, pass, hue, on };
 }
 function crystalOverlay(t) {
@@ -74,7 +74,7 @@ function crystalOverlay(t) {
     const bx = 420, bw = 500; g.textAlign = "left"; g.fillText("LIGHT AT THE SENSOR", bx, 1384); g.fillStyle = "rgba(255,255,255,.14)"; rrect(bx, 1410, bw, 34, 17); g.fill(); g.fillStyle = pass > .6 ? "#FFC55C" : "#8F7BE0"; rrect(bx, 1410, Math.max(34, bw * pass), 34, 17); g.fill();
     g.fillStyle = pass > .6 ? "#FFC55C" : "#C9A9FF"; g.fillText(pass > .6 ? "MORE LIGHT GETS THROUGH" : "THORIUM SOAKS IT UP", bx, 1488);
     const fb = prog(t, tw("fix") - .2, tw("laser", 2) + .1); if (fb > 0 && fb < 1.2) { g.strokeStyle = "#7AE0A0"; g.lineWidth = 5; g.setLineDash([14, 10]); g.lineDashOffset = -t * 40; g.beginPath(); g.moveTo(bx - 10, 1427); g.lineTo(dcx + dr + 24, 1427); g.stroke(); g.setLineDash([]); g.fillStyle = "#7AE0A0"; g.beginPath(); g.moveTo(dcx + dr + 30, 1427); g.lineTo(dcx + dr + 52, 1415); g.lineTo(dcx + dr + 52, 1439); g.closePath(); g.fill(); }
-    g.restore(); regEl("hud", 90, 1352, 860, 178, hud); reg("hudl1", 130, 1300, 220, 50, hud, 36, 9); }
+    g.restore(); regEl("hud", 90, 1362, 860, 168, hud); reg("hudl1", 130, 1298, 220, 44, hud, 36, 9); }
   // counting the waves: waves -> ticks -> time
   const ca = win(t, tw("count", 1) - .05, 83.2, .4, .5); if (ca > 0) { g.save(); g.globalAlpha = ca; g.fillStyle = "rgba(10,12,22,.82)"; rrect(90, 1290, 870, 240, 22); g.fill();
     const wv = Math.floor((t - 80.4) * 4.7e11), s2 = ((wv % 1e12) + "").padStart(12, "0").replace(/(\d{3})(?=\d)/g, "$1 ");

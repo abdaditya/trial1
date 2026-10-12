@@ -24,7 +24,7 @@ function sPaper(t) {
   g.fillStyle = "#16121c"; g.fillRect(PX + 40, HY + lines.length * 100 + 10, 220, 5);
   // a halftone photo of the planet the clocks work for (real NASA Blue Marble), hung under the headline
   const pa = eo(prog(t, 22.9, 24.0)); if (pa > 0) { g.save(); g.globalAlpha = pa; const ix = PX + 50, iy = HY + lines.length * 100 + 50, iw = PW - 100, ih = Math.min(470, PY + PH - 50 - iy); g.beginPath(); g.rect(ix, iy, iw, ih); g.clip();
-    const im = IM.gps3; if (im && im.naturalWidth) { g.filter = "grayscale(1) contrast(1.25) brightness(1.05) sepia(.35)"; g.fillStyle = "#05060b"; g.fillRect(ix, iy, iw, ih); g.drawImage(im, ix + iw / 2 - 340, iy + ih / 2 - .43 * 680, 680, 680); g.filter = "none"; }
+    const im = IM.jila; if (im && im.naturalWidth) { g.filter = "contrast(1.1) saturate(.85) sepia(.25)"; const sc = Math.max(iw / im.width, ih / im.height); g.drawImage(im, ix + iw / 2 - im.width * sc / 2, iy + ih / 2 - im.height * sc / 2, im.width * sc, im.height * sc); g.filter = "none"; }
     g.globalCompositeOperation = "multiply"; g.fillStyle = "rgba(255,240,205,.5)"; g.fillRect(ix, iy, iw, ih); g.restore(); }
   g.restore();
   regEl("paper", PX, PY, PW, PH, (k > .5 && t > 21.8 && t < 24.9) ? 1 : 0);

@@ -15,7 +15,8 @@ const SC = [
   { id: "cry", t0: 69.9, t1: 83.6, f: t => { crystalFrame(t); crystalOverlay(t); }, tr: "fade" },
   { id: "race", t0: 82.6, t1: 88.6, f: raceFrame, tr: "fade" },
   { id: "chart", t0: 87.6, t1: 94.9, f: zw(sChart, 87.6, 94.9, 1.04, 1.0), tr: "fade" },
-  { id: "fin", t0: 93.9, t1: 120, f: finaleFrame, tr: "fade" },
+  { id: "fin", t0: 93.9, t1: 97.6, f: finaleFrame, tr: "fade" },
+  { id: "end", t0: 96.6, t1: 120, f: sEnd, tr: "fade" },
 ];
 const CAPS = [
   { id: "c0", i0: 0, i1: 13, t1: 3.95, size: 66, st: { clock: { hl: "lav" } } },

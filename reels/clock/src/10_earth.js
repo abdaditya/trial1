@@ -3,7 +3,7 @@
 // ======================================================================
 const EARTH = new THREE.Scene(); let EARTH_MAT; const E = {};
 const ll2v = (lat, lon, r = 1) => { const ph = (lon + 180) * Math.PI / 180, th = (90 - lat) * Math.PI / 180; return new THREE.Vector3(-Math.cos(ph) * Math.sin(th) * r, Math.cos(th) * r, Math.sin(ph) * Math.sin(th) * r); };
-const MUMBAI = [40.7, -74.0], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
+const MUMBAI = [41.88, -87.63], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
 const spriteMat = (map, o = 1, blend = true) => new THREE.SpriteMaterial({ map, transparent: true, opacity: o, depthWrite: false, depthTest: false, blending: blend ? THREE.AdditiveBlending : THREE.NormalBlending });
 function pinTexture(col = "#FFC55C") { const c = document.createElement("canvas"); c.width = 128; c.height = 160; const x = c.getContext("2d");
   x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 10; x.fillStyle = col; x.beginPath(); x.arc(64, 58, 44, Math.PI * .85, Math.PI * .15, false); x.lineTo(64, 148); x.closePath(); x.fill(); x.shadowColor = "transparent";

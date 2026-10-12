@@ -59,7 +59,7 @@ function atomFrame(t) {
   A3.vDisc.material.opacity = .22 * vk; A3.vault.rotation.y = .4 * (1 - vk); A3.vault.lookAt(CAM.position);
   // shells fade a little as the camera dives through them
   A3.ring.forEach((r, i) => { if (i < 2) r.material.opacity = .28 * (1 - .6 * prog(t, 42.5, 44)); });
-  draw3D(ATOM, 0x04050c); shade(.7, 760, .45);
+  draw3D(ATOM, 0x04050c, t < 44 ? () => labBg(IM.jila, .62, .5, 1.0, 1.18, 24.4, 44, t, .42, 5) : () => labBg(IM.nistion, .5, .5, 1.0, 1.15, 44, 53, t, .5, 6)); shade(.7, 760, .45);
   return { dist, hl };
 }
 // pinned labels and HUD for the atom

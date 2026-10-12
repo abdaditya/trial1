@@ -36,7 +36,7 @@ const te = (phrase, nth = 0) => { const p = norm(phrase).split(" "), i = ix(phra
 
 // ---------------- assets ----------------
 const IM = {}; const loads = [];
-for (const n of ["gps3", "dp"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
+for (const n of ["gps3", "dp", "chicago", "jila", "nistion"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
 const grain = mk(); grain.width = grain.height = 512;
 { const gg = grain.getContext("2d"), d = gg.createImageData(512, 512); for (let i = 0; i < d.data.length; i += 4) { const v = R() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } gg.putImageData(d, 0, 0); }
 
@@ -120,12 +120,14 @@ function kicker(t, s, t0, t1, y = 318, cream = false) {
 // 3D (three.js) — only for the Earth, the dam, the land plots and the stop switch
 // ======================================================================
 const GLC = document.createElement("canvas"); GLC.width = W; GLC.height = H;
-const RND = new THREE.WebGLRenderer({ canvas: GLC, antialias: true, preserveDrawingBuffer: true });
+const RND = new THREE.WebGLRenderer({ canvas: GLC, antialias: true, alpha: true, preserveDrawingBuffer: true });
 RND.setSize(W, H, false); RND.outputColorSpace = THREE.SRGBColorSpace; RND.toneMapping = THREE.ACESFilmicToneMapping; RND.toneMappingExposure = 1.05;
 const CAM = new THREE.PerspectiveCamera(35, W / H, .01, 400);
 const PMREM = new THREE.PMREMGenerator(RND);
 const TL = new THREE.TextureLoader(); const tex = (u, srgb = true) => new Promise(r => TL.load(u, x => { if (srgb) x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; r(x); }, undefined, () => r(null)));
-function draw3D(scene, bg) { RND.setClearColor(bg ?? 0x000000, 1); RND.render(scene, CAM); g.drawImage(GLC, 0, 0); }
+function draw3D(scene, bg, under) { RND.setClearColor(bg ?? 0x000000, under ? 0 : 1); RND.render(scene, CAM); if (under) under(); g.drawImage(GLC, 0, 0); }
+// a real lab photo (NIST / JILA, public domain) kept dark and soft behind the 3D scenes
+function labBg(im, fx, fy, z0, z1, t0, t1, t, bright = .4, blur = 5) { g.fillStyle = "#04050c"; g.fillRect(0, 0, W, H); if (!im.naturalWidth) return; photo(im, fx, fy, lerp(z0, z1, eio(prog(t, t0, t1))), `blur(${blur}px) brightness(${bright}) saturate(1.25)`); g.fillStyle = "rgba(4,5,14,.28)"; g.fillRect(0, 0, W, H); }
 function screenOf(v) { const p = v.clone().project(CAM); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; }
 function glowTex(r, g2, b) { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
   gr.addColorStop(0, `rgba(${r},${g2},${b},1)`); gr.addColorStop(.25, `rgba(${r},${g2},${b},.55)`); gr.addColorStop(1, `rgba(${r},${g2},${b},0)`); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
@@ -136,7 +138,7 @@ const GOLD = glowTex(255, 196, 92), WARM = glowTex(255, 214, 160), REDG = glowTe
 // ======================================================================
 const EARTH = new THREE.Scene(); let EARTH_MAT; const E = {};
 const ll2v = (lat, lon, r = 1) => { const ph = (lon + 180) * Math.PI / 180, th = (90 - lat) * Math.PI / 180; return new THREE.Vector3(-Math.cos(ph) * Math.sin(th) * r, Math.cos(th) * r, Math.sin(ph) * Math.sin(th) * r); };
-const MUMBAI = [40.7, -74.0], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
+const MUMBAI = [41.88, -87.63], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
 const spriteMat = (map, o = 1, blend = true) => new THREE.SpriteMaterial({ map, transparent: true, opacity: o, depthWrite: false, depthTest: false, blending: blend ? THREE.AdditiveBlending : THREE.NormalBlending });
 function pinTexture(col = "#FFC55C") { const c = document.createElement("canvas"); c.width = 128; c.height = 160; const x = c.getContext("2d");
   x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 10; x.fillStyle = col; x.beginPath(); x.arc(64, 58, 44, Math.PI * .85, Math.PI * .15, false); x.lineTo(64, 148); x.closePath(); x.fill(); x.shadowColor = "transparent";
@@ -271,12 +273,21 @@ function finaleFrame(t) {
   const u1 = ((t * .4) % 1), u2 = ((t * .4 + .5) % 1); E.pkA.position.lerpVectors(pA, pinP, u1); E.pkB.position.lerpVectors(pB, pinP, u2); E.pkA.material.opacity = ap; E.pkB.material.opacity = ap;
   E.ripple.forEach((r, i) => { const k = (((t - 94.5) / 1.8 + i * .5) % 1 + 1) % 1; r.position.copy(pinP); r.scale.setScalar(.08 + .5 * eo(k)); r.material.opacity = t > 94.5 ? .5 * (1 - k) : 0; });
   draw3D(EARTH, 0x05060b); shade(.7, 760, .45);
-  // the phone pin becomes an atom on "inside an atom"
-  const [px, py] = screenOf(pinP.clone().add(new THREE.Vector3(0, 0, 0))), ak = eio(prog(t, tw("inside", 2) - .1, tw("atom", 2) + .35));
-  if (ak > 0) { g.save(); g.globalAlpha = ak; g.translate(px, py - 70); const s = lerp(.2, 1, eob(ak)); g.scale(s, s);
-    const gl = g.createRadialGradient(0, 0, 10, 0, 0, 150); gl.addColorStop(0, "rgba(255,197,92,.6)"); gl.addColorStop(1, "rgba(255,197,92,0)"); g.fillStyle = gl; g.fillRect(-150, -150, 300, 300);
-    for (let i = 0; i < 3; i++) { g.save(); g.rotate(i * Math.PI / 3 + t * .5); g.strokeStyle = "rgba(159,232,255,.95)"; g.lineWidth = 4; g.beginPath(); g.ellipse(0, 0, 92, 34, 0, 0, 7); g.stroke(); const an = t * 2 + i * 2.1; g.fillStyle = "#BFEAFF"; g.beginPath(); g.arc(Math.cos(an) * 92, Math.sin(an) * 34, 8, 0, 7); g.fill(); g.restore(); }
-    g.fillStyle = "#FFB347"; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill(); g.restore(); }
+}
+function atomIcon(px, py, t, ak) {
+  g.save(); g.globalAlpha = ak; g.translate(px, py); const s = lerp(.2, 1, eob(ak)); g.scale(s, s);
+  const gl = g.createRadialGradient(0, 0, 10, 0, 0, 150); gl.addColorStop(0, "rgba(255,197,92,.6)"); gl.addColorStop(1, "rgba(255,197,92,0)"); g.fillStyle = gl; g.fillRect(-150, -150, 300, 300);
+  for (let i = 0; i < 3; i++) { g.save(); g.rotate(i * Math.PI / 3 + t * .5); g.strokeStyle = "rgba(159,232,255,.95)"; g.lineWidth = 4; g.beginPath(); g.ellipse(0, 0, 92, 34, 0, 0, 7); g.stroke(); const an = t * 2 + i * 2.1; g.fillStyle = "#BFEAFF"; g.beginPath(); g.arc(Math.cos(an) * 92, Math.sin(an) * 34, 8, 0, 7); g.fill(); g.restore(); }
+  g.fillStyle = "#FFB347"; g.beginPath(); g.arc(0, 0, 22, 0, 7); g.fill(); g.restore();
+}
+// the bookend: back to the same Chicago night; the phone's clock becomes an atom
+function sEnd(t) {
+  const k = eio(prog(t, 96.6, 99.6)), map = photo(IM.chicago, .56, lerp(.36, .40, k), lerp(1.2, 1.0, k), `brightness(${lerp(.7, .95, k)}) contrast(1.1) saturate(1.15)`);
+  vignette(.5); shade(.82, 860, .55);
+  let [px, py] = map(.53, .34); px = clamp(px, 330, 750); py = clamp(py, 900, 1250);
+  const ak = eio(prog(t, tw("inside", 2) - .2, tw("atom", 2) + .35)), ck = 1 - ak;
+  if (ck > 0) clockFace(px, py - 40, 118, (t - 3.0) / 3.2, ck);
+  if (ak > 0) atomIcon(px, py - 40, t, ak);
 }
 
 // ======================================================================
@@ -292,15 +303,17 @@ function clockFace(cx, cy, r, sec, a = 1, col = "#FFC55C", ghost = null, face = 
   if (ghost !== null) hand(sec + ghost, .84, r * .03, "rgba(255,90,78,.95)");
   hand(sec, .84, r * .03, col); g.fillStyle = col; g.beginPath(); g.arc(0, 0, r * .06, 0, 7); g.fill(); g.restore();
 }
-// S1 - the hook: a real GPS satellite (GPS.gov, public domain); on "clock" a clock face lights up above it and signal rings go out
+// S1 - the hook: Chicago at night, photographed from the ISS (NASA, public domain) - a street map made of light; on "map" a pin drops, on "clock" it turns into a clock
 function sHook(t) {
-  const k = eio(prog(t, 0, 4.7)), z = lerp(1.0, 1.1, k), im = IM.gps3;
-  darkBg(); const sz = 1100 * z, x = W / 2 - sz / 2 + lerp(14, -14, k), y = H - sz + lerp(0, 20, k) - (z - 1) * 120;
-  g.save(); g.globalCompositeOperation = "lighter"; g.globalAlpha = eo(prog(t, 0, .9)); if (im.naturalWidth) g.drawImage(im, x, y, sz, sz); g.restore();
-  vignette(.4);
-  const toClock = eio(prog(t, tw("clock") - .15, tw("clock") + .9)), cx = 520, cy = 860;
-  if (toClock > 0) { const s = eob(prog(t, tw("clock") - .1, tw("clock") + .7)); clockFace(cx, cy, 118 * Math.max(.01, s), (t - 3.0) / 3.2, toClock); regEl("clock", cx - 130, cy - 130, 260, 260, toClock); }
-  for (let i = 0; i < 2; i++) { const rg = prog(t, tw("clock") + .4 + i * .5, tw("clock") + 1.6 + i * .5); if (rg > 0 && rg < 1) { g.save(); g.globalAlpha = .6 * (1 - rg); g.strokeStyle = "#FFC55C"; g.lineWidth = 4; g.beginPath(); g.arc(cx, cy, 140 + 420 * eo(rg), 0, 7); g.stroke(); g.restore(); } }
+  const k = eio(prog(t, 0, 4.7)), im = IM.chicago;
+  const map = photo(im, .56, lerp(.40, .36, k), lerp(1.0, 1.2, k), `brightness(${lerp(.95, .7, k)}) contrast(1.1) saturate(1.15)`);
+  vignette(.5); shade(.82, 860, .55);
+  let [px, py] = map(.53, .34); px = clamp(px, 330, 750); py = clamp(py, 900, 1250);
+  const reveal = eo(prog(t, tw("map") - .3, tw("map") + .35)), toClock = eio(prog(t, tw("clock") - .15, tw("clock") + .9)), drop = eob(prog(t, tw("map") - .15, tw("map") + .45));
+  if (reveal > 0 && toClock < 1) { g.save(); g.globalAlpha = reveal * (1 - toClock); g.translate(px, py - (1 - drop) * 160); g.scale(1 - toClock * .5, 1 - toClock * .5);
+    g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = 20; g.fillStyle = "#FFC55C"; g.beginPath(); g.arc(0, -66, 50, Math.PI * .85, Math.PI * .15, false); g.lineTo(0, 0); g.closePath(); g.fill(); g.shadowColor = "transparent"; g.fillStyle = "#1a1228"; g.beginPath(); g.arc(0, -66, 19, 0, 7); g.fill(); g.restore(); }
+  if (toClock > 0) { const s = eob(prog(t, tw("clock") - .1, tw("clock") + .7)); clockFace(px, py - 40, 118 * Math.max(.01, s), (t - 3.0) / 3.2, toClock); regEl("clock", px - 130, py - 170, 260, 260, toClock); }
+  for (let i = 0; i < 2; i++) { const rg = prog(t, tw("clock") + .4 + i * .5, tw("clock") + 1.6 + i * .5); if (rg > 0 && rg < 1) { g.save(); g.globalAlpha = .6 * (1 - rg); g.strokeStyle = "#FFC55C"; g.lineWidth = 4; g.beginPath(); g.arc(px, py - 40, 140 + 420 * eo(rg), 0, 7); g.stroke(); g.restore(); } }
 }
 // S3 - 30 cm in a billionth of a second: a light pulse races along a ruler, then the phone's clock is off by that much
 function sRuler(t) {
@@ -358,7 +371,7 @@ function sPaper(t) {
   g.fillStyle = "#16121c"; g.fillRect(PX + 40, HY + lines.length * 100 + 10, 220, 5);
   // a halftone photo of the planet the clocks work for (real NASA Blue Marble), hung under the headline
   const pa = eo(prog(t, 22.9, 24.0)); if (pa > 0) { g.save(); g.globalAlpha = pa; const ix = PX + 50, iy = HY + lines.length * 100 + 50, iw = PW - 100, ih = Math.min(470, PY + PH - 50 - iy); g.beginPath(); g.rect(ix, iy, iw, ih); g.clip();
-    const im = IM.gps3; if (im && im.naturalWidth) { g.filter = "grayscale(1) contrast(1.25) brightness(1.05) sepia(.35)"; g.fillStyle = "#05060b"; g.fillRect(ix, iy, iw, ih); g.drawImage(im, ix + iw / 2 - 340, iy + ih / 2 - .43 * 680, 680, 680); g.filter = "none"; }
+    const im = IM.jila; if (im && im.naturalWidth) { g.filter = "contrast(1.1) saturate(.85) sepia(.25)"; const sc = Math.max(iw / im.width, ih / im.height); g.drawImage(im, ix + iw / 2 - im.width * sc / 2, iy + ih / 2 - im.height * sc / 2, im.width * sc, im.height * sc); g.filter = "none"; }
     g.globalCompositeOperation = "multiply"; g.fillStyle = "rgba(255,240,205,.5)"; g.fillRect(ix, iy, iw, ih); g.restore(); }
   g.restore();
   regEl("paper", PX, PY, PW, PH, (k > .5 && t > 21.8 && t < 24.9) ? 1 : 0);
@@ -425,7 +438,7 @@ function atomFrame(t) {
   A3.vDisc.material.opacity = .22 * vk; A3.vault.rotation.y = .4 * (1 - vk); A3.vault.lookAt(CAM.position);
   // shells fade a little as the camera dives through them
   A3.ring.forEach((r, i) => { if (i < 2) r.material.opacity = .28 * (1 - .6 * prog(t, 42.5, 44)); });
-  draw3D(ATOM, 0x04050c); shade(.7, 760, .45);
+  draw3D(ATOM, 0x04050c, t < 44 ? () => labBg(IM.jila, .62, .5, 1.0, 1.18, 24.4, 44, t, .42, 5) : () => labBg(IM.nistion, .5, .5, 1.0, 1.15, 44, 53, t, .5, 6)); shade(.7, 760, .45);
   return { dist, hl };
 }
 // pinned labels and HUD for the atom
@@ -505,7 +518,7 @@ function crystalFrame(t) {
   // wave fronts
   const wk = win(t, tw("count", 1) - .1, 83.3, .35, .5);
   C3.fronts.forEach((m, i) => { const u = (((t - 80.4) * .85 + i * .0538) % 1 + 1) % 1, y = lerp(YL - .05, YC + .02, u); m.position.y = y; m.material.opacity = wk * on * .85 * Math.sin(Math.PI * u) ** .6; m.material.color.copy(col).offsetHSL(0, 0, .15); m.scale.setScalar(1 + .6 * Math.sin(Math.PI * u)); });
-  draw3D(CRY, 0x04050b); shade(.7, 760, .45);
+  draw3D(CRY, 0x04050b, () => labBg(IM.jila, .25, .5, 1.05, 1.0, 69.9, 83.6, t, .45, 5)); shade(.7, 760, .45);
   return { ab, pass, hue, on };
 }
 function crystalOverlay(t) {
@@ -529,7 +542,7 @@ function crystalOverlay(t) {
     const bx = 420, bw = 500; g.textAlign = "left"; g.fillText("LIGHT AT THE SENSOR", bx, 1384); g.fillStyle = "rgba(255,255,255,.14)"; rrect(bx, 1410, bw, 34, 17); g.fill(); g.fillStyle = pass > .6 ? "#FFC55C" : "#8F7BE0"; rrect(bx, 1410, Math.max(34, bw * pass), 34, 17); g.fill();
     g.fillStyle = pass > .6 ? "#FFC55C" : "#C9A9FF"; g.fillText(pass > .6 ? "MORE LIGHT GETS THROUGH" : "THORIUM SOAKS IT UP", bx, 1488);
     const fb = prog(t, tw("fix") - .2, tw("laser", 2) + .1); if (fb > 0 && fb < 1.2) { g.strokeStyle = "#7AE0A0"; g.lineWidth = 5; g.setLineDash([14, 10]); g.lineDashOffset = -t * 40; g.beginPath(); g.moveTo(bx - 10, 1427); g.lineTo(dcx + dr + 24, 1427); g.stroke(); g.setLineDash([]); g.fillStyle = "#7AE0A0"; g.beginPath(); g.moveTo(dcx + dr + 30, 1427); g.lineTo(dcx + dr + 52, 1415); g.lineTo(dcx + dr + 52, 1439); g.closePath(); g.fill(); }
-    g.restore(); regEl("hud", 90, 1352, 860, 178, hud); reg("hudl1", 130, 1300, 220, 50, hud, 36, 9); }
+    g.restore(); regEl("hud", 90, 1362, 860, 168, hud); reg("hudl1", 130, 1298, 220, 44, hud, 36, 9); }
   // counting the waves: waves -> ticks -> time
   const ca = win(t, tw("count", 1) - .05, 83.2, .4, .5); if (ca > 0) { g.save(); g.globalAlpha = ca; g.fillStyle = "rgba(10,12,22,.82)"; rrect(90, 1290, 870, 240, 22); g.fill();
     const wv = Math.floor((t - 80.4) * 4.7e11), s2 = ((wv % 1e12) + "").padStart(12, "0").replace(/(\d{3})(?=\d)/g, "$1 ");
@@ -563,7 +576,7 @@ const SP = { x0: 120, x1: 920, y: 1100 };   // spectrum strip; 100-800 nm
 const spx = nm => SP.x0 + (nm - 100) / 700 * (SP.x1 - SP.x0);
 function visGradient() { const gr = g.createLinearGradient(spx(400), 0, spx(700), 0); [[0, "#7a2cff"], [.18, "#2f5bff"], [.38, "#27d3ff"], [.52, "#37e06b"], [.7, "#ffe04a"], [.85, "#ff8a2a"], [1, "#ff3b2a"]].forEach(([o, c]) => gr.addColorStop(o, c)); return gr; }
 function sSpectrum(t) {
-  darkBg(.3); g.save(); g.globalAlpha = .05; g.globalCompositeOperation = "overlay"; g.drawImage(grain, 0, 0, W, H); g.restore();
+  labBg(IM.nistion, .5, .5, 1.0, 1.12, 52, 70.9, t, .32, 7);
   // ---- A: the energy needed (huge for a usual nucleus, tiny for thorium) ----
   const A = win(t, 52.2, tw("except", 0) + .2, .6, .8) , A2 = win(t, tw("except", 0) - .1, 62.9, .7, .8);
   if (A > 0) { g.save(); g.globalAlpha = A; const bx = 300, by = 1380, bh = 700, bw = 150, k = eio(prog(t, tw("huge") - .5, tw("huge") + .9));
@@ -584,7 +597,7 @@ function sSpectrum(t) {
       g.fillStyle = visGradient(); g.fillRect(spx(400), SP.y - 22, spx(700) - spx(400), 44);
       g.fillStyle = "rgba(142,92,255,.28)"; g.fillRect(spx(100), SP.y - 22, spx(400) - spx(100), 44); g.strokeStyle = "rgba(180,150,255,.6)"; g.lineWidth = 2; for (let x = spx(100); x < spx(400); x += 14) { g.beginPath(); g.moveTo(x, SP.y + 22); g.lineTo(x + 14, SP.y - 22); g.stroke(); }
       g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.textAlign = "left"; g.fillStyle = "#C9A9FF"; g.fillText("ULTRAVIOLET", spx(100), SP.y + 84); g.textAlign = "right"; g.fillStyle = "#F5EFE3"; g.fillText("VISIBLE", spx(700), SP.y + 84); g.restore();
-      regEl("strip", SP.x0 - 30, SP.y - 150, SP.x1 - SP.x0 + 60, 190, sk); reg("uv", spx(100), SP.y + 48, 330, 50, sk, 36, 9);
+      regEl("strip", SP.x0 - 30, SP.y - 150, SP.x1 - SP.x0 + 60, 178, sk); reg("uv", spx(100), SP.y + 48, 330, 50, sk, 36, 9);
       // the hunt: a cursor that scans, misses, and finally locks on 148 nm
       const hunt = prog(t, tw("for", 0) + .1, tw("hit", 1) - .1), lock = eo(prog(t, tw("hit", 1) - .05, tw("hit", 1) + .3)), target = spx(148);
       const hx = lerp(spx(560) + Math.sin(t * 2.2) * 90, target, 0) , scan = (hunt < 1) ? (spx(150) + (spx(520) - spx(150)) * (.5 + .5 * Math.sin(t * 1.9 + Math.sin(t * .6) * 2)) * (1 - .55 * hunt) + (target - spx(150)) * .0) : target;
@@ -642,7 +655,8 @@ const SC = [
   { id: "cry", t0: 69.9, t1: 83.6, f: t => { crystalFrame(t); crystalOverlay(t); }, tr: "fade" },
   { id: "race", t0: 82.6, t1: 88.6, f: raceFrame, tr: "fade" },
   { id: "chart", t0: 87.6, t1: 94.9, f: zw(sChart, 87.6, 94.9, 1.04, 1.0), tr: "fade" },
-  { id: "fin", t0: 93.9, t1: 120, f: finaleFrame, tr: "fade" },
+  { id: "fin", t0: 93.9, t1: 97.6, f: finaleFrame, tr: "fade" },
+  { id: "end", t0: 96.6, t1: 120, f: sEnd, tr: "fade" },
 ];
 const CAPS = [
   { id: "c0", i0: 0, i1: 13, t1: 3.95, size: 66, st: { clock: { hl: "lav" } } },

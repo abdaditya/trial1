@@ -22,7 +22,7 @@ const te = (phrase, nth = 0) => { const p = norm(phrase).split(" "), i = ix(phra
 
 // ---------------- assets ----------------
 const IM = {}; const loads = [];
-for (const n of ["gps3", "dp"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
+for (const n of ["gps3", "dp", "chicago", "jila", "nistion"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
 const grain = mk(); grain.width = grain.height = 512;
 { const gg = grain.getContext("2d"), d = gg.createImageData(512, 512); for (let i = 0; i < d.data.length; i += 4) { const v = R() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } gg.putImageData(d, 0, 0); }
 
@@ -106,12 +106,14 @@ function kicker(t, s, t0, t1, y = 318, cream = false) {
 // 3D (three.js) — only for the Earth, the dam, the land plots and the stop switch
 // ======================================================================
 const GLC = document.createElement("canvas"); GLC.width = W; GLC.height = H;
-const RND = new THREE.WebGLRenderer({ canvas: GLC, antialias: true, preserveDrawingBuffer: true });
+const RND = new THREE.WebGLRenderer({ canvas: GLC, antialias: true, alpha: true, preserveDrawingBuffer: true });
 RND.setSize(W, H, false); RND.outputColorSpace = THREE.SRGBColorSpace; RND.toneMapping = THREE.ACESFilmicToneMapping; RND.toneMappingExposure = 1.05;
 const CAM = new THREE.PerspectiveCamera(35, W / H, .01, 400);
 const PMREM = new THREE.PMREMGenerator(RND);
 const TL = new THREE.TextureLoader(); const tex = (u, srgb = true) => new Promise(r => TL.load(u, x => { if (srgb) x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = 8; r(x); }, undefined, () => r(null)));
-function draw3D(scene, bg) { RND.setClearColor(bg ?? 0x000000, 1); RND.render(scene, CAM); g.drawImage(GLC, 0, 0); }
+function draw3D(scene, bg, under) { RND.setClearColor(bg ?? 0x000000, under ? 0 : 1); RND.render(scene, CAM); if (under) under(); g.drawImage(GLC, 0, 0); }
+// a real lab photo (NIST / JILA, public domain) kept dark and soft behind the 3D scenes
+function labBg(im, fx, fy, z0, z1, t0, t1, t, bright = .4, blur = 5) { g.fillStyle = "#04050c"; g.fillRect(0, 0, W, H); if (!im.naturalWidth) return; photo(im, fx, fy, lerp(z0, z1, eio(prog(t, t0, t1))), `blur(${blur}px) brightness(${bright}) saturate(1.25)`); g.fillStyle = "rgba(4,5,14,.28)"; g.fillRect(0, 0, W, H); }
 function screenOf(v) { const p = v.clone().project(CAM); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H, p.z]; }
 function glowTex(r, g2, b) { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
   gr.addColorStop(0, `rgba(${r},${g2},${b},1)`); gr.addColorStop(.25, `rgba(${r},${g2},${b},.55)`); gr.addColorStop(1, `rgba(${r},${g2},${b},0)`); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
