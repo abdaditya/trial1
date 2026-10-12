@@ -11,21 +11,15 @@ function clockFace(cx, cy, r, sec, a = 1, col = "#FFC55C", ghost = null, face = 
   if (ghost !== null) hand(sec + ghost, .84, r * .03, "rgba(255,90,78,.95)");
   hand(sec, .84, r * .03, col); g.fillStyle = col; g.beginPath(); g.arc(0, 0, r * .06, 0, 7); g.fill(); g.restore();
 }
-// S1 - the hook: a real photo of a city at night; a map pin turns into a clock
+// S1 - the hook: a real GPS satellite (GPS.gov, public domain); on "clock" a clock face lights up above it and signal rings go out
 function sHook(t) {
-  const k = eio(prog(t, 0, 4.4)), z = lerp(1.0, 1.1, k), dr = prog(t, 3.2, 4.4);
-  const map = photo(IM.city, .5, lerp(.56, .5, k), z, `saturate(${lerp(1.1, 1.35, k)}) contrast(1.08) brightness(${lerp(.82, .72, k)})`);
-  vignette(.5); shade(.82, 860, .55);
-  const [px, py] = map(.27, .66), reveal = eo(prog(t, tw("map") - .3, tw("map") + .35)), toClock = eio(prog(t, tw("clock") - .15, tw("clock") + .9));
-  // "a map": a faint map grid + a pin that drops in
-  const gridA = reveal * (1 - toClock);
-  if (gridA > 0) { g.save(); g.globalAlpha = .5 * gridA; g.strokeStyle = "rgba(255,226,170,.55)"; g.lineWidth = 2; for (let i = -6; i <= 6; i++) { g.beginPath(); g.moveTo(px + i * 90 - 40, py - 540); g.lineTo(px + i * 90 + 40, py + 540); g.stroke(); g.beginPath(); g.moveTo(px - 540, py + i * 90); g.lineTo(px + 540, py + i * 90 - 30); g.stroke(); } g.restore(); }
-  const drop = eob(prog(t, tw("map") - .15, tw("map") + .45));
-  if (reveal > 0 && toClock < 1) { g.save(); g.globalAlpha = reveal * (1 - toClock); g.translate(px, py - (1 - drop) * 140); g.scale(1 - toClock * .5, 1 - toClock * .5);
-    g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = 20; g.fillStyle = "#FFC55C"; g.beginPath(); g.arc(0, -66, 50, Math.PI * .85, Math.PI * .15, false); g.lineTo(0, 0); g.closePath(); g.fill(); g.shadowColor = "transparent"; g.fillStyle = "#1a1228"; g.beginPath(); g.arc(0, -66, 19, 0, 7); g.fill(); g.restore(); }
-  if (toClock > 0) { const s = eob(prog(t, tw("clock") - .1, tw("clock") + .7)); clockFace(px, py - 70, 118 * Math.max(.01, s), (t - 3.0) / 3.2, toClock); regEl("clock", px - 130, py - 200, 260, 260, toClock); }
-  // a signal ring from the clock
-  const rg = prog(t, tw("clock") + .5, 4.3); if (rg > 0 && rg < 1) { g.save(); g.globalAlpha = .6 * (1 - rg); g.strokeStyle = "#FFC55C"; g.lineWidth = 4; g.beginPath(); g.arc(px, py - 70, 140 + 520 * eo(rg), 0, 7); g.stroke(); g.restore(); }
+  const k = eio(prog(t, 0, 4.7)), z = lerp(1.0, 1.1, k), im = IM.gps3;
+  darkBg(); const sz = 1100 * z, x = W / 2 - sz / 2 + lerp(14, -14, k), y = H - sz + lerp(0, 20, k) - (z - 1) * 120;
+  g.save(); g.globalCompositeOperation = "lighter"; g.globalAlpha = eo(prog(t, 0, .9)); if (im.naturalWidth) g.drawImage(im, x, y, sz, sz); g.restore();
+  vignette(.4);
+  const toClock = eio(prog(t, tw("clock") - .15, tw("clock") + .9)), cx = 520, cy = 860;
+  if (toClock > 0) { const s = eob(prog(t, tw("clock") - .1, tw("clock") + .7)); clockFace(cx, cy, 118 * Math.max(.01, s), (t - 3.0) / 3.2, toClock); regEl("clock", cx - 130, cy - 130, 260, 260, toClock); }
+  for (let i = 0; i < 2; i++) { const rg = prog(t, tw("clock") + .4 + i * .5, tw("clock") + 1.6 + i * .5); if (rg > 0 && rg < 1) { g.save(); g.globalAlpha = .6 * (1 - rg); g.strokeStyle = "#FFC55C"; g.lineWidth = 4; g.beginPath(); g.arc(cx, cy, 140 + 420 * eo(rg), 0, 7); g.stroke(); g.restore(); } }
 }
 // S3 - 30 cm in a billionth of a second: a light pulse races along a ruler, then the phone's clock is off by that much
 function sRuler(t) {

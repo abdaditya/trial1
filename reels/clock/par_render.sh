@@ -2,7 +2,7 @@
 # Render the picture in 4 parallel segments (edited voice clock), then merge video + whole-reel text QA.
 cd "$(dirname "$0")"; mkdir -p out/seg
 DUR=$(node -e 'const fs=require("fs");const m=fs.readFileSync("index.html","utf8").match(/DUR = ([\d.]+);/);console.log(m[1])')
-CUTS=(0 22 44 66 $DUR)
+CUTS=(0 30 50 82 $DUR)
 for i in 0 1 2 3; do
   SEGMENT=1 START=${CUTS[$i]} END=${CUTS[$((i+1))]} OUT=out/seg/p$i.mp4 QAOUT=out/seg/qa$i.json node render.mjs video 30 > out/seg/log$i.txt 2>&1 &
 done

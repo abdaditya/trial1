@@ -3,7 +3,7 @@
 // ======================================================================
 const EARTH = new THREE.Scene(); let EARTH_MAT; const E = {};
 const ll2v = (lat, lon, r = 1) => { const ph = (lon + 180) * Math.PI / 180, th = (90 - lat) * Math.PI / 180; return new THREE.Vector3(-Math.cos(ph) * Math.sin(th) * r, Math.cos(th) * r, Math.sin(ph) * Math.sin(th) * r); };
-const MUMBAI = [19.08, 72.88], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
+const MUMBAI = [40.7, -74.0], VIENNA = [48.21, 16.37], BEIJING = [39.9, 116.4];
 const spriteMat = (map, o = 1, blend = true) => new THREE.SpriteMaterial({ map, transparent: true, opacity: o, depthWrite: false, depthTest: false, blending: blend ? THREE.AdditiveBlending : THREE.NormalBlending });
 function pinTexture(col = "#FFC55C") { const c = document.createElement("canvas"); c.width = 128; c.height = 160; const x = c.getContext("2d");
   x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 10; x.fillStyle = col; x.beginPath(); x.arc(64, 58, 44, Math.PI * .85, Math.PI * .15, false); x.lineTo(64, 148); x.closePath(); x.fill(); x.shadowColor = "transparent";
@@ -61,10 +61,10 @@ function lab3(text, v, dx, dy, a, id, col = "#F7D58A", fs = 36) {   // pill labe
   g.strokeStyle = "rgba(247,213,138,.85)"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(clamp(cx, SAFE.x0 + 4, SAFE.x1 - 4), cy); g.stroke();
   g.fillStyle = "rgba(12,10,16,.86)"; rrect(bx, by, tw + 28, 60, 12); g.fill(); g.fillStyle = col; g.fillText(text, bx + 14, by + 42); g.restore(); reg(id, bx, by, tw + 28, 60, a, fs, 10); }
 // ---- the GPS beat: how late the signal arrives tells you how far away the satellite is ----
-const GPS = { sA: () => ll2v(23, 66, 1.45), sB: () => ll2v(4, 116, 2.05) };
+const GPS = { sA: () => ll2v(47, -88, 1.45), sB: () => ll2v(8, -22, 2.05) };
 function gpsFrame(t) {
-  const cam = track([[3.7, [24, 70, 4.6, -330]], [6.0, [22, 74, 5.3, -350]], [8.8, [20, 82, 6.2, -360]], [10.0, [14, 92, 7.0, -370]], [12.9, [10, 98, 7.4, -370]]], t);
-  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .55; EARTH_MAT.uniforms.dayAmt.value = .85; EARTH_MAT.uniforms.sun.value.copy(ll2v(10, 40)).normalize();
+  const cam = track([[3.7, [30, -70, 5.6, -330]], [6.0, [30, -72, 6.0, -350]], [8.8, [28, -66, 6.6, -360]], [10.0, [24, -58, 7.2, -370]], [12.9, [22, -52, 7.6, -370]]], t);
+  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .55; EARTH_MAT.uniforms.dayAmt.value = .85; EARTH_MAT.uniforms.sun.value.copy(ll2v(15, -85)).normalize();
   const pinP = E.pin.position, orb = Math.sin(t * .35) * .02;
   const pA = GPS.sA().add(new THREE.Vector3(0, orb, 0)), pB = GPS.sB().add(new THREE.Vector3(0, -orb, 0));
   E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0);

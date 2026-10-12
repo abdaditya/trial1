@@ -18,8 +18,8 @@ function raceFrame(t) {
 }
 // ---- Earth, scene 3: the finale - your phone, the satellites, and the clock that might tick inside an atom ----
 function finaleFrame(t) {
-  const cam = track([[93.9, [20, 76, 5.6, -340]], [99.6, [18, 84, 7.2, -360]]], t);
-  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .6; EARTH_MAT.uniforms.dayAmt.value = .8; EARTH_MAT.uniforms.sun.value.copy(ll2v(10, 40)).normalize();
+  const cam = track([[93.9, [28, -70, 6.2, -340]], [99.6, [26, -60, 7.4, -360]]], t);
+  earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .6; EARTH_MAT.uniforms.dayAmt.value = .8; EARTH_MAT.uniforms.sun.value.copy(ll2v(15, -85)).normalize();
   const pA = GPS.sA().add(new THREE.Vector3(0, Math.sin(t * .35) * .02, 0)), pB = GPS.sB();
   E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0); const ap = eo(prog(t, 94.0, 95.0)); E.A.scale.setScalar(1.3 * ap + .001); E.B.scale.setScalar(1.3 * ap + .001);
   E.A.userData.glow.material.opacity = ap * (.55 + .45 * Math.sin(t * 12)); E.B.userData.glow.material.opacity = ap * (.55 + .45 * Math.sin(t * 12 + 1));

@@ -22,7 +22,7 @@ const te = (phrase, nth = 0) => { const p = norm(phrase).split(" "), i = ix(phra
 
 // ---------------- assets ----------------
 const IM = {}; const loads = [];
-for (const n of ["city", "dp"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
+for (const n of ["gps3", "dp"]) { const im = new Image(); im.src = `img/${n}.jpg`; IM[n] = im; loads.push(new Promise(r => { im.onload = r; im.onerror = r; })); }
 const grain = mk(); grain.width = grain.height = 512;
 { const gg = grain.getContext("2d"), d = gg.createImageData(512, 512); for (let i = 0; i < d.data.length; i += 4) { const v = R() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } gg.putImageData(d, 0, 0); }
 
