@@ -63,13 +63,13 @@ function lab3(text, v, dx, dy, a, id, col = "#F7D58A", fs = 36) {   // pill labe
 // ---- the GPS beat: how late the signal arrives tells you how far away the satellite is ----
 const GPS = { sA: () => ll2v(47, -88, 1.45), sB: () => ll2v(8, -22, 2.05) };
 function gpsFrame(t) {
-  const cam = track([[3.7, [30, -70, 5.6, -330]], [6.0, [30, -72, 6.0, -350]], [8.8, [28, -66, 6.6, -360]], [10.0, [24, -58, 7.2, -370]], [12.9, [22, -52, 7.6, -370]]], t);
+  const cam = track([[3.7, [30, -72, 4.8, -300]], [6.0, [30, -74, 5.0, -320]], [8.8, [28, -68, 5.4, -330]], [10.0, [24, -60, 5.9, -340]], [12.9, [22, -54, 6.2, -340]]], t);
   earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .55; EARTH_MAT.uniforms.dayAmt.value = .85; EARTH_MAT.uniforms.sun.value.copy(ll2v(15, -85)).normalize();
   const pinP = E.pin.position, orb = Math.sin(t * .35) * .02;
   const pA = GPS.sA().add(new THREE.Vector3(0, orb, 0)), pB = GPS.sB().add(new THREE.Vector3(0, -orb, 0));
   E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0);
   const appearA = eo(prog(t, 3.9, 5.0)), appearB = eo(prog(t, 9.7, 10.7));
-  E.A.scale.setScalar(1.3 * appearA + .001); E.B.scale.setScalar(1.3 * appearB + .001);
+  E.A.scale.setScalar(1.9 * appearA + .001); E.B.scale.setScalar(1.9 * appearB + .001);
   const dA = pA.distanceTo(pinP), dB = pB.distanceTo(pinP);
   // round 1: slow motion, one packet from A.  round 2: both packets at the same speed, launched together
   const t1a = tw("sending out"), tArr1 = te("arrives") - .05, v1 = dA / (tArr1 - (t1a + .35));
@@ -96,7 +96,7 @@ function gpsFrame(t) {
   // pinned labels + the delay HUD
   lab3("ATOMIC CLOCK", pA.clone().add(new THREE.Vector3(.02, .06, 0)), 70, -90, win(t, tw("atomic clock") - .05, tw("sending out") - .1, .3, .4), "atomic");
   lab3("YOUR PHONE", pinP, -60, -170, win(t, tw("your phone", 1) - .1, 11.6, .35, .5), "phone", "#F5EFE3");
-  const hudA = win(t, t1a + .2, 12.8, .5, .5); if (hudA > 0) {
+  const hudA = win(t, t1a + .2, 12.1, .5, .5); if (hudA > 0) {
     const row = (y, label, u, col, done, id) => { g.save(); g.globalAlpha = hudA; g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#F5EFE3"; g.fillText(label, 120, y + 36);
       g.fillStyle = "rgba(255,255,255,.14)"; rrect(120, y + 56, 810, 26, 13); g.fill(); g.fillStyle = col; rrect(120, y + 56, Math.max(26, 810 * u), 26, 13); g.fill();
       if (done) { g.textAlign = "right"; g.fillStyle = col; g.fillText(done, 930, y + 36); } g.restore(); reg("hud:" + id, 120, y, 810, 90, hudA, 36, 9); };

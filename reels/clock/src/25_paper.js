@@ -3,7 +3,7 @@
 // ======================================================================
 function sPaper(t) {
   darkBg(1);
-  const T0 = 20.8, k = eob(prog(t, T0, T0 + 1.5)), drift = prog(t, T0, 25.8), z = lerp(1.0, 1.07, eio(drift));
+  const T0 = 21.0, k = eob(prog(t, T0, T0 + 1.5)), drift = prog(t, T0, 25.8), z = lerp(1.0, 1.07, eio(drift));
   const PX = 110, PW = 830, PY = 330, PH = 1130;
   g.save(); g.translate(W / 2, H / 2 + 20); g.scale(z, z); g.rotate((-.012 + .012 * eo(prog(t, T0, T0 + 2.2))) ); g.translate(-W / 2, -H / 2 - 20 + (1 - k) * 1500);
   g.shadowColor = "rgba(0,0,0,.65)"; g.shadowBlur = 70; g.shadowOffsetY = 30; g.fillStyle = "#EFE7D6"; g.fillRect(PX, PY, PW, PH); g.shadowColor = "transparent";
@@ -27,5 +27,5 @@ function sPaper(t) {
     const im = IM.jila; if (im && im.naturalWidth) { g.filter = "contrast(1.1) saturate(.85) sepia(.25)"; const sc = Math.max(iw / im.width, ih / im.height); g.drawImage(im, ix + iw / 2 - im.width * sc / 2, iy + ih / 2 - im.height * sc / 2, im.width * sc, im.height * sc); g.filter = "none"; }
     g.globalCompositeOperation = "multiply"; g.fillStyle = "rgba(255,240,205,.5)"; g.fillRect(ix, iy, iw, ih); g.restore(); }
   g.restore();
-  regEl("paper", PX, PY, PW, PH, (k > .5 && t > 21.8 && t < 24.9) ? 1 : 0);
+  regEl("paper", PX, PY, PW, PH, (k > .5 && t > 22.0 && t < 24.9) ? 1 : 0);
 }

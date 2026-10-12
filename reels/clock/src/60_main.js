@@ -6,16 +6,16 @@ const zw = (f, t0, t1, z0, z1) => t => { const z = lerp(z0, z1, eio(prog(t, t0, 
 const SC = [
   { id: "hook", t0: 0, t1: 4.7, f: sHook },
   { id: "gps", t0: 3.7, t1: 12.8, f: gpsFrame, tr: "push" },
-  { id: "ruler", t0: 11.8, t1: 21.6, f: zw(sRuler, 11.8, 21.6, 1.0, 1.04), tr: "fade" },
-  { id: "paper", t0: 20.6, t1: 25.9, f: sPaper, tr: "fade" },
-  { id: "atom1", t0: 24.9, t1: 37.8, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
-  { id: "wind", t0: 36.8, t1: 39.8, f: zw(sWind, 36.8, 39.8, 1.0, 1.04), tr: "fade" },
+  { id: "ruler", t0: 11.8, t1: 21.9, f: zw(sRuler, 11.8, 21.6, 1.0, 1.04), tr: "fade" },
+  { id: "paper", t0: 20.9, t1: 25.9, f: sPaper, tr: "fade" },
+  { id: "atom1", t0: 24.9, t1: 37.2, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
+  { id: "wind", t0: 36.2, t1: 39.8, f: zw(sWind, 36.2, 39.8, 1.0, 1.04), tr: "fade" },
   { id: "atom2", t0: 38.8, t1: 53.0, f: t => { atomFrame(t); atomOverlay(t); }, tr: "fade" },
   { id: "spec", t0: 52.0, t1: 70.9, f: zw(sSpectrum, 52, 70.9, 1.0, 1.05), tr: "fade" },
   { id: "cry", t0: 69.9, t1: 83.6, f: t => { crystalFrame(t); crystalOverlay(t); }, tr: "fade" },
   { id: "race", t0: 82.6, t1: 88.6, f: raceFrame, tr: "fade" },
-  { id: "chart", t0: 87.6, t1: 94.9, f: zw(sChart, 87.6, 94.9, 1.04, 1.0), tr: "fade" },
-  { id: "fin", t0: 93.9, t1: 97.6, f: finaleFrame, tr: "fade" },
+  { id: "chart", t0: 87.6, t1: 95.2, f: zw(sChart, 87.6, 94.9, 1.04, 1.0), tr: "fade" },
+  { id: "fin", t0: 94.4, t1: 97.6, f: finaleFrame, tr: "fade" },
   { id: "end", t0: 96.6, t1: 120, f: sEnd, tr: "fade" },
 ];
 const CAPS = [
@@ -24,7 +24,7 @@ const CAPS = [
   { id: "c2", i0: 24, i1: 30, t1: 9.4, size: 66, st: { late: { it: 1, hl: "or" } } },
   { id: "c3", i0: 31, i1: 34, t1: 12.3, size: 70, st: { farther: { it: 1, hl: "or" } } },
   { id: "c4", i0: 35, i1: 44, t1: 15.75, size: 62, ink: true, st: { billionth: { it: 1, hl: "or" } } },
-  { id: "c5", i0: 45, i1: 54, t1: 21.3, size: 62, ink: true, st: { tiny: { it: 1, hl: "red" }, off: { it: 1, hl: "red" } } },
+  { id: "c5", i0: 45, i1: 54, t1: 20.95, size: 62, ink: true, fix: 1, st: { tiny: { it: 1, hl: "red" }, off: { it: 1, hl: "red" } } },
   { id: "c7", i0: 66, i1: 73, t1: 27.5, size: 64, st: { atom: { hl: "lav" } } },
   { id: "c8", i0: 74, i1: 82, t1: 31.2, size: 62, st: { electrons: { it: 1, hl: "or" }, outside: { it: 1, hl: "or" } } },
   { id: "c9", i0: 83, i1: 85, t1: 33.5, size: 74, st: { exposed: { it: 1, hl: "red" } } },
@@ -47,6 +47,8 @@ const CAPS = [
   { id: "c26", i0: 236, i1: 244, t1: 97.2, size: 64, st: { clock: { it: 1, hl: "or" } } },
   { id: "c27", i0: 245, i1: 252, t1: 1e3, size: 66, st: { tick: { it: 1, hl: "or" }, atom: { it: 1, hl: "or" } } },
 ];
+// give every caption as much reading time as the pauses allow, without ever colliding with the next one
+CAPS.forEach((c, i) => { const n = CAPS[i + 1]; if (!n || c.fix) return; c.t1 = Math.min(ws(n.i0) - .05 - .12, c.t1 + 1.0); });
 const KICKS = [[0.05, 3.9, "HOW YOUR PHONE FINDS YOU"], [4.4, 12.6, "GPS · ATOMIC CLOCKS"], [12.5, 21.2, "ONE BILLIONTH OF A SECOND", true], [21.7, 25.3, "NATURE · 7 OCTOBER 2026"], [25.9, 36.6, "INSIDE AN ATOMIC CLOCK"],
   [37.1, 39.4, "A CLOCK IN THE WIND", true], [39.6, 52.4, "INSIDE THE ATOM"], [52.9, 70.5, "THORIUM-229"], [70.8, 83.2, "HOW THE CLOCK WORKS"], [83.8, 88.2, "OCTOBER 2026"], [88.3, 94.5, "THE REALITY CHECK", true]];
 function transition(type, k, A, B) {   // A: outgoing canvas, B: incoming canvas, k: 0..1

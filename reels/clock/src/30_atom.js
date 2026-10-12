@@ -31,8 +31,8 @@ function buildAtom() {
 }
 const ATOM_DOMAIN = { show: [24.4, 99], dive: [39.2, 44.3] };
 function atomFrame(t) {
-  const cam = track([[24.4, [20, 18, 11.5]], [25.0, [36, 16, 9.6]], [27.4, [52, 14, 8.2]], [33.0, [72, 18, 8.4]], [37.4, [92, 16, 8.8]],
-    [39.2, [92, 16, 8.8]], [44.3, [150, 8, .95]], [45.4, [160, 8, .95]], [48.6, [188, 14, 6.6]], [49.7, [196, 12, 4.4]], [52.5, [212, 8, 4.0]]], t);
+  const cam = track([[24.4, [20, 18, 8.8]], [25.0, [36, 16, 7.4]], [27.4, [52, 14, 6.4]], [33.0, [72, 18, 6.6]], [37.4, [92, 16, 6.9]],
+    [39.2, [92, 16, 6.9]], [44.3, [150, 8, .95]], [45.4, [160, 8, .95]], [48.6, [188, 14, 6.6]], [49.7, [196, 12, 4.4]], [52.5, [212, 8, 4.0]]], t);
   const az = cam[0] * Math.PI / 180, el = cam[1] * Math.PI / 180, d = cam[2];
   CAM.fov = 35; CAM.clearViewOffset(); CAM.setViewOffset(W, H, 0, -190, W, H); CAM.up.set(0, 1, 0); CAM.position.set(d * Math.cos(el) * Math.sin(az), d * Math.sin(el), d * Math.cos(el) * Math.cos(az)); CAM.lookAt(0, 0, 0); CAM.updateProjectionMatrix();
   const appear = eo(prog(t, 24.9, 26.1)), ticks = prog(t, 25.34, 99), tickP = ((t - 25.34) / .9) % 1, flash = ticks > 0 ? Math.exp(-7 * tickP) : 0;

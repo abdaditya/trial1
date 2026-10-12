@@ -77,8 +77,8 @@ function crystalOverlay(t) {
     g.restore(); regEl("hud", 90, 1362, 860, 168, hud); reg("hudl1", 130, 1298, 220, 44, hud, 36, 9); }
   // counting the waves: waves -> ticks -> time
   const ca = win(t, tw("count", 1) - .05, 83.2, .4, .5); if (ca > 0) { g.save(); g.globalAlpha = ca; g.fillStyle = "rgba(10,12,22,.82)"; rrect(90, 1290, 870, 240, 22); g.fill();
-    const wv = Math.floor((t - 80.4) * 4.7e11), s2 = ((wv % 1e12) + "").padStart(12, "0").replace(/(\d{3})(?=\d)/g, "$1 ");
+    const wv = BigInt(Math.floor(Math.max(0, t - 80.4) * 2.0204e15)), s2 = wv.toString().padStart(16, "0").replace(/(\d)(?=(\d{3})+$)/g, "$1 ");
     g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#C9A9FF"; g.textAlign = "left"; g.fillText("WAVES COUNTED", 130, 1348); g.font = "800 66px Oswald"; g.fillStyle = "#F5EFE3"; g.letterSpacing = "6px"; g.fillText(s2, 130, 1430);
-    const sec = Math.floor(Math.max(0, t - 80.9) * 1); g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#FFC55C"; g.fillText("= TIME", 130, 1490); g.font = "800 40px Oswald"; g.fillText("00:00:" + String(sec).padStart(2, "0"), 330, 1492);
-    g.restore(); regEl("count", 90, 1342, 860, 188, ca); reg("cnt", 130, 1298, 400, 44, ca, 36, 9); }
+    const sec = Math.floor(Math.max(0, t - 80.4)); g.font = "700 36px Inter"; g.letterSpacing = "4px"; g.fillStyle = "#FFC55C"; g.fillText("= TIME", 130, 1490); g.font = "800 40px Oswald"; g.fillText("00:00:" + String(sec).padStart(2, "0"), 330, 1492);
+    g.restore(); regEl("count", 90, 1362, 860, 168, ca); reg("cnt", 130, 1298, 400, 44, ca, 36, 9); }
 }

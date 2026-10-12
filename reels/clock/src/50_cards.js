@@ -23,7 +23,7 @@ const SP = { x0: 120, x1: 920, y: 1100 };   // spectrum strip; 100-800 nm
 const spx = nm => SP.x0 + (nm - 100) / 700 * (SP.x1 - SP.x0);
 function visGradient() { const gr = g.createLinearGradient(spx(400), 0, spx(700), 0); [[0, "#7a2cff"], [.18, "#2f5bff"], [.38, "#27d3ff"], [.52, "#37e06b"], [.7, "#ffe04a"], [.85, "#ff8a2a"], [1, "#ff3b2a"]].forEach(([o, c]) => gr.addColorStop(o, c)); return gr; }
 function sSpectrum(t) {
-  labBg(IM.nistion, .5, .5, 1.0, 1.12, 52, 70.9, t, .32, 7);
+  labBg(IM.nistion, .5, .5, 1.0, 1.12, 52, 70.9, t, .62, 6);
   // ---- A: the energy needed (huge for a usual nucleus, tiny for thorium) ----
   const A = win(t, 52.2, tw("except", 0) + .2, .6, .8) , A2 = win(t, tw("except", 0) - .1, 62.9, .7, .8);
   if (A > 0) { g.save(); g.globalAlpha = A; const bx = 300, by = 1380, bh = 700, bw = 150, k = eio(prog(t, tw("huge") - .5, tw("huge") + .9));
@@ -73,14 +73,14 @@ function sChart(t) {
   const base = CH / 2 - 150, bw = 220, x1 = -170, x2 = 170;
   g.strokeStyle = "#2a2420"; g.lineWidth = 3; g.beginPath(); g.moveTo(-CW / 2 + 60, base); g.lineTo(CW / 2 - 60, base); g.stroke();
   const ak = eio(prog(t, 88.9, 89.9)), nk = eio(prog(t, 89.0, 90.0));
-  g.fillStyle = "#2a2420"; g.fillRect(x1 - bw / 2, base - 560 * ak, bw, 560 * ak);
-  g.fillStyle = "#F08C32"; g.fillRect(x2 - bw / 2, base - 330 * nk, bw, 330 * nk);
+  g.fillStyle = "#2a2420"; g.fillRect(x1 - bw / 2, base - 300 * ak, bw, 300 * ak);
+  g.fillStyle = "#F08C32"; g.fillRect(x2 - bw / 2, base - 180 * nk, bw, 180 * nk);
   g.font = "700 36px Inter"; g.letterSpacing = "2px"; g.textAlign = "center"; g.fillStyle = "#2a2420"; g.fillText("TODAY'S", x1, base + 50); g.fillText("ATOMIC CLOCKS", x1, base + 94); g.fillStyle = "#B4501F"; g.fillText("NUCLEAR", x2, base + 50); g.fillText("CLOCK (NOW)", x2, base + 94);
   // later: the nuclear bar is predicted to climb far higher (the researchers' estimate), shown breaking out of the card
-  const gk = eio(prog(t, tw("improve") - .1, tw("times", 1) + .5)); if (gk > 0) { g.save(); g.beginPath(); g.rect(-CW / 2, -CH / 2 - 700, CW, CH + 700 - 0); g.clip(); g.strokeStyle = "#B4501F"; g.lineWidth = 6; g.setLineDash([16, 12]); const hh = 330 + gk * 1150; g.strokeRect(x2 - bw / 2, base - hh, bw, hh); g.fillStyle = `rgba(240,140,50,${.35 * gk})`; g.fillRect(x2 - bw / 2, base - hh, bw, hh); g.setLineDash([]); g.restore(); }
+  const gk = eio(prog(t, tw("improve") - .1, tw("times", 1) + .5)); if (gk > 0) { g.save(); g.beginPath(); g.rect(-CW / 2, -CH / 2, CW, CH); g.clip(); g.strokeStyle = "#B4501F"; g.lineWidth = 6; g.setLineDash([16, 12]); const hh = 180 + gk * 300; g.strokeRect(x2 - bw / 2, base - hh, bw, hh); g.fillStyle = `rgba(240,140,50,${.35 * gk})`; g.fillRect(x2 - bw / 2, base - hh, bw, hh); g.setLineDash([]); g.restore(); }
   g.restore();
-  regEl("chartcard", CX - CW / 2, TOP, CW, CH, k);
+  
   // stamps and the 10,000x counter
   const st = prog(t, tw("not") - .02, tw("not") + .4); if (st > 0) { g.save(); const s2 = lerp(2.2, 1, eob(clamp(st))); g.globalAlpha = clamp(st * 3) * (1 - eio(prog(t, 90.4, 90.9))); g.translate(CX + 120, 1360); g.rotate(-8 * Math.PI / 180); g.scale(s2, s2); g.font = "600 84px Oswald"; g.letterSpacing = "8px"; const w2 = g.measureText("NOT YET").width + 8; g.strokeStyle = "#C0392B"; g.lineWidth = 7; g.strokeRect(-w2 / 2 - 26, -70, w2 + 52, 104); g.fillStyle = "#C0392B"; g.textAlign = "center"; g.fillText("NOT YET", 4, 4); g.restore(); reg("noty", CX + 120 - 230, 1290, 460, 120, clamp(st * 3) * (1 - eio(prog(t, 90.4, 90.9))), 84, 8); }
-  const ca = win(t, tw("improve") - .1, 94.5, .4, .5); if (ca > 0) { const n = Math.round(10000 * eio(prog(t, tw("10"), te("times", 1) - .05))); g.save(); g.globalAlpha = ca; g.textAlign = "center"; g.font = "800 150px Playfair"; g.fillStyle = "#B4501F"; g.fillText(n.toLocaleString("en-US") + "×", CX, 810); g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.fillStyle = "#6b5718"; g.fillText("RESEARCHERS' ESTIMATE · NOT TO SCALE", CX, 870); g.restore(); reg("tenk", CX - 380, 690, 760, 190, ca, 150, 10); reg("est", CX - 400, 836, 800, 50, ca, 36, 9); }
+  const ca = win(t, tw("improve") - .1, 94.5, .4, .5); if (ca > 0) { const n = Math.round(10000 * eio(prog(t, tw("10"), te("times", 1) - .05))); g.save(); g.globalAlpha = ca; g.textAlign = "center"; g.font = "800 150px Playfair"; g.fillStyle = "#B4501F"; g.fillText(n.toLocaleString("en-US") + "×", CX, 810); g.font = "700 36px Inter"; g.letterSpacing = "3px"; g.fillStyle = "#6b5718"; g.fillText("RESEARCHERS' ESTIMATE · NOT TO SCALE", CX, 870); g.restore(); reg("tenk", CX - 380, 690, 760, 130, ca, 150, 10); reg("est", CX - 400, 846, 800, 44, ca, 36, 9); }
 }

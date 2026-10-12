@@ -14,14 +14,14 @@ function raceFrame(t) {
   lab3("VIENNA", vp, -50, -120, win(t, tw("vienna", 0) + .1, 88.2, .4, .5), "vie", "#C9B7FF");
   lab3("BEIJING", bp, 60, -120, win(t, tw("beijing") + .1, 88.2, .4, .5), "bei", "#F7D58A");
   const sep = win(t, tw("working") - .05, tw("built", 1) + .2, .35, .4); if (sep > 0) { g.save(); g.globalAlpha = sep; g.font = "700 40px Inter"; g.letterSpacing = "5px"; const s2 = "WORKING SEPARATELY", w2 = g.measureText(s2).width + 5; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 30, 1330, w2 + 60, 82, 41); g.fill(); g.strokeStyle = "#9FE8FF"; g.lineWidth = 3; g.stroke(); g.fillStyle = "#9FE8FF"; g.textAlign = "center"; g.fillText(s2, CX + 3, 1384); g.restore(); reg("sep", CX - w2 / 2 - 30, 1330, w2 + 60, 82, sep, 40, 10); }
-  if (first > 0) { g.save(); g.globalAlpha = first; g.font = "700 40px Inter"; g.letterSpacing = "5px"; const s2 = "THE WORLD'S FIRST NUCLEAR CLOCKS", w2 = g.measureText(s2).width + 5; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 28, 1420, w2 + 56, 82, 41); g.fill(); g.strokeStyle = "#FFC55C"; g.lineWidth = 3; g.stroke(); g.fillStyle = "#FFC55C"; g.textAlign = "center"; g.fillText(s2, CX + 3, 1474); g.restore(); reg("first", CX - w2 / 2 - 28, 1420, w2 + 56, 82, first, 40, 10); }
+  if (first > 0) { g.save(); g.globalAlpha = first; g.font = "700 36px Inter"; g.letterSpacing = "3px"; const s2 = "WORLD'S FIRST NUCLEAR CLOCKS", w2 = g.measureText(s2).width + 5; g.fillStyle = "rgba(12,10,16,.9)"; rrect(CX - w2 / 2 - 28, 1420, w2 + 56, 82, 41); g.fill(); g.strokeStyle = "#FFC55C"; g.lineWidth = 3; g.stroke(); g.fillStyle = "#FFC55C"; g.textAlign = "center"; g.fillText(s2, CX + 3, 1474); g.restore(); reg("first", CX - w2 / 2 - 28, 1420, w2 + 56, 82, first, 40, 10); }
 }
 // ---- Earth, scene 3: the finale - your phone, the satellites, and the clock that might tick inside an atom ----
 function finaleFrame(t) {
-  const cam = track([[93.9, [28, -70, 6.2, -340]], [99.6, [26, -60, 7.4, -360]]], t);
+  const cam = track([[93.9, [28, -72, 5.2, -320]], [99.6, [26, -62, 6.2, -340]]], t);
   earthCam(cam[0], cam[1], cam[2], cam[3]); EARTH_MAT.uniforms.nightAmt.value = .6; EARTH_MAT.uniforms.dayAmt.value = .8; EARTH_MAT.uniforms.sun.value.copy(ll2v(15, -85)).normalize();
   const pA = GPS.sA().add(new THREE.Vector3(0, Math.sin(t * .35) * .02, 0)), pB = GPS.sB();
-  E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0); const ap = eo(prog(t, 94.0, 95.0)); E.A.scale.setScalar(1.3 * ap + .001); E.B.scale.setScalar(1.3 * ap + .001);
+  E.A.position.copy(pA); E.B.position.copy(pB); E.A.lookAt(0, 0, 0); E.B.lookAt(0, 0, 0); const ap = eo(prog(t, 94.0, 95.0)); E.A.scale.setScalar(1.9 * ap + .001); E.B.scale.setScalar(1.9 * ap + .001);
   E.A.userData.glow.material.opacity = ap * (.55 + .45 * Math.sin(t * 12)); E.B.userData.glow.material.opacity = ap * (.55 + .45 * Math.sin(t * 12 + 1));
   E.vie.material.opacity = 0; E.bei.material.opacity = 0; E.vieRing.material.opacity = 0; E.beiRing.material.opacity = 0; E.pinRing.forEach(r => r.material.opacity = 0);
   // beams from both satellites to the phone, steady pulses

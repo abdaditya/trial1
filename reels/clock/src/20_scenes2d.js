@@ -31,7 +31,7 @@ function sRuler(t) {
   const rk = eo(prog(t, 12.1, 13.0)); g.save(); g.globalAlpha = rk; g.translate(0, (1 - rk) * 60);
   g.shadowColor = "rgba(60,40,20,.3)"; g.shadowBlur = 40; g.shadowOffsetY = 18; g.fillStyle = "#F1C94A"; rrect(RX0 - 40, RY - 70, 830, 170, 14); g.fill(); g.shadowColor = "transparent";
   g.fillStyle = "#2a2420"; for (let i = 0; i <= 30; i++) { const x = RX0 + i * PXCM, big = i % 5 === 0; g.fillRect(x - 1.5, RY - 70, 3, big ? 62 : 36); if (big) { g.font = "700 38px Inter"; g.textAlign = "center"; g.fillText(String(i), x, RY + 20); } }
-  g.font = "700 30px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = "#6b5718"; g.fillText("CM", RX0 - 20, RY + 78); g.restore(); regEl("ruler", RX0 - 40, RY - 70, 830, 170, rk);
+  g.font = "700 30px Inter"; g.letterSpacing = "4px"; g.textAlign = "left"; g.fillStyle = "#6b5718"; g.fillText("CM", RX0 - 20, RY + 78); g.restore(); regEl("ruler", RX0 - 40, RY - 70, 830, 170, t > 12.8 ? rk : 0);
   // the light pulse + the nanosecond counter
   const tr = prog(t, tw("30") + .05, te("second") - .1), lx = RX0 + (RX1 - RX0) * tr, ns1 = (tr * 1).toFixed(2);
   const ca = win(t, tw("travels"), 15.75, .35, .45); if (ca > 0) { g.save(); g.globalAlpha = ca; g.textAlign = "center"; g.fillStyle = "#16121c"; g.font = "800 130px Playfair"; g.fillText(ns1 + " ns", CX, 800);
