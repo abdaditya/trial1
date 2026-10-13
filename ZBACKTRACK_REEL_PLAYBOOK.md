@@ -404,3 +404,40 @@ The recording leaves the pipeline **exactly as the user saved it**. Google × Wi
 - Split it into 24 MB parts (the first part prefixed with `ZBKT`), commit one part per call into `NOTTTTT posted/_to_delete/<name>_parts`, then join on the device: `(tail -c +5 p00; cat p01 …) > file`.
 - Verify the md5, and move the previous version into `_to_delete` (deleting isn't allowed).
 - Chat upload is capped at 30 MB. If the device is offline, keep the parts and commit when it's back.
+
+## 17. Learnings from the atomic-clock reel and topic hunts (Oct 2026)
+
+### 17.1 Topics: what the channel is
+- zbacktrack is an **AI / tech business + India tech** channel, not a science channel. Check the account first (vidIQ `vidiq_ig_profile_reels`, handle `zbacktrack`) before pitching.
+- What performs: India tech stories (ISRO NavIC, 63K plays, ~6× anything else), then big-money deals with the number in the hook ("AMD just agreed to pay $8.2 billion", "Nvidia just paid $13 billion for a company that makes almost no money").
+- Don't pitch generic concepts, well-known explainers or old history. Pitch this week's stories in the deal / India-tech format, each with a hook line, the verified facts, and what is single-source.
+- Flag weak sourcing plainly (aggregator-only, anonymous, conflicting dates). Drop apocryphal stories (e.g. the cobra bounty).
+
+### 17.2 Scripts
+- Always send the **whole voiceover as flowing paragraphs**. Never numbered lines (hated).
+- Plain words, short sentences, a dramatic first line. ~2.5 words/s on the user's recordings: 50 s ≈ 115–120 words.
+- Keep the user's recording untouched and as recorded unless they ask; report the length against the target.
+
+### 17.3 Look and motion
+- **Frame 0:** a real, topic-related HD photo with the caption typing in. Never a random/unrelated photo (a city bridge for a GPS story was rejected).
+- **No topic kicker above the caption.** Captions are the headline (Playfair), word by word.
+- **Newspaper beat:** cream front page on dark, masthead "ZBACKTRACK STORIES" (never "India Ledger"), the spoken line typed as the headline, a real photo under it.
+- **Earth:** show the whole globe; don't centre India unless the story is about India. Check orientation (north up, continents correct), no borders.
+- Slow, unhurried animation; slow push on flat scenes; a very slight drifting light leak; mix dark and cream scenes; some frames only a big caption for a question/fact.
+- **Text-light:** one label per beat at most; cut HUD captions/labels that repeat the voice.
+- Real public-domain photos behind 3D: render three.js with `alpha: true`, clear alpha 0, and draw a dimmed, blurred photo underneath (`labBg`).
+
+### 17.4 Images
+- Wikimedia Commons API (`generator=search … filetype:bitmap`, `iiprop=size|extmetadata`) to find PD files; download with `Special:FilePath/<name>?width=1920` and a User-Agent. It rate-limits: sleep 8–30 s and retry; check the file is JPEG, not HTML.
+- Good PD sources: NASA ISS night-city photos (Chicago, NYC), NIST/JILA atomic-clock lab photos, GPS.gov image library.
+
+### 17.5 Render and QA
+- SwiftShader 3D costs ~3–4 s/frame; a 100 s reel takes 60–75 min in 4 parallel segments. Balance the cuts by 3D load, not by time.
+- The cloud container can restart mid-render (check `uptime`); start renders with `setsid nohup`, and re-check before trusting a long wait.
+- Before a full render, render stills across the whole reel and fix QA there; after it, fix leftovers by **patch-rendering only the bad window** (`SEGMENT=1 START= END=`) and splicing with trim/concat inside the final encode.
+- QA notes: gate element boxes during cross-dissolves (both scenes' labels exist mid-fade); keep label boxes 16 px clear of panels; extend each caption into the following pause (up to the next caption − 0.17 s) for reading time. Word-by-word lines will still flag "too short" when the voice is fast; report them, don't hide them.
+- Numbers on screen must be real (e.g. thorium's 148 nm light ≈ 2.02 × 10^15 waves/s, not an arbitrary odometer).
+
+### 17.6 Delivery
+- HD: two-pass x264 ~7 Mbps (stays under GitHub's 100 MB), voice AAC 192k at the recording's native rate, encoded once. Chat copy: ~1.9 Mbps (< 30 MB).
+- Push both with `git add -f` and **always give the GitHub links** (file and folder) in the reply.
