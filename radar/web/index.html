@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Creator Radar</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1b19;--mute:#6f6b63;--line:#e4e1d8;--accent:#c2410c;--accent-ink:#fff;--good:#15803d;--warn:#b45309;--bar:#fde3d3;--chip:#efece4}
+@media (prefers-color-scheme:dark){:root{--bg:#161513;--card:#201f1c;--ink:#f0ede6;--mute:#a09b90;--line:#35322c;--accent:#fb923c;--accent-ink:#1c1b19;--good:#4ade80;--warn:#fbbf24;--bar:#4a2c17;--chip:#2c2a25}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+h1{font-size:18px;margin:0 8px 0 0;letter-spacing:-.01em}
+nav{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+nav button{background:none;border:0;color:var(--mute);padding:7px 12px;border-radius:8px;font:inherit;cursor:pointer}
+nav button.on{background:var(--chip);color:var(--ink);font-weight:600}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;padding:8px 14px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
+.btn.ghost{background:var(--chip);color:var(--ink);font-weight:500}
+.btn.small{padding:4px 9px;font-size:13px}
+.btn:disabled{opacity:.55;cursor:default}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+.status{font-size:13px;color:var(--mute)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card .k{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.card .v{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:2px}
+.card .s{font-size:12.5px;color:var(--mute);margin-top:2px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:18px;overflow:hidden}
+.panel h2{font-size:15px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.panel h2 .grow{flex:1}
+.pad{padding:14px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;font-weight:600;cursor:pointer;white-space:nowrap;user-select:none}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tr.go{cursor:pointer}tr.go:hover td{background:var(--chip)}
+td.t{min-width:240px;max-width:460px}
+a{color:inherit;text-decoration:none}
+a:hover{text-decoration:underline}
+.tag{display:inline-block;background:var(--chip);border-radius:6px;padding:1px 7px;font-size:12px;color:var(--mute);margin-right:4px;white-space:nowrap}
+.tag.yt{color:#dc2626}.tag.ig{color:#c026d3}.tag.tt{color:#0891b2}.tag.me{color:var(--good)}.tag.warn{color:var(--warn)}
+.score{display:inline-block;min-width:54px;padding:1px 7px;border-radius:6px;background:var(--chip);text-align:center;font-weight:600}
+.score.hot{background:var(--bar);color:var(--accent)}
+.mute{color:var(--mute)}
+.err{color:var(--warn);font-size:12.5px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+textarea{width:100%;min-height:62px;resize:vertical}
+form.row,.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.idea{border-bottom:1px solid var(--line);padding:12px 14px}
+.idea:last-child{border-bottom:0}
+.idea b{font-size:16px}
+.idea ul{margin:6px 0 0;padding-left:18px}
+.cmt{border-bottom:1px solid var(--line);padding:14px;display:grid;gap:8px}
+.cmt:last-child{border-bottom:0}
+.cmt .q{border-left:3px solid var(--line);padding-left:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.empty{padding:26px 14px;color:var(--mute);text-align:center}
+.note{background:var(--chip);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:14px}
+.seg{display:inline-flex;background:var(--chip);border-radius:8px;padding:2px}
+.seg button{background:none;border:0;font:inherit;padding:4px 10px;border-radius:6px;color:var(--mute);cursor:pointer}
+.seg button.on{background:var(--card);color:var(--ink);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>Creator Radar</h1>
+  <nav id="nav"></nav>
+  <span class="status" id="status"></span>
+  <button class="btn" id="refresh">Refresh numbers</button>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+<script>
+const TABS = [["me","My account"],["creators","Creators"],["trending","Trending"],["ideas","Topic ideas"],["news","News"],["comments","Comments"]];
+let S = null, tab = "me", days = 30, sortKey = {}, pick = null, search = null, kindFilter = "all", period = "life", meSort = "published", creatorQ = "";
+try { tab = localStorage.getItem("radar.tab") || "me"; } catch (e) {}
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u || "") ? esc(u) : "#";
+const num = n => n == null ? "–" : n >= 1e6 ? (n/1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e4 ? Math.round(n/1e3) + "k" : n >= 1e3 ? (n/1e3).toFixed(1) + "k" : String(n);
+const ptag = p => `<span class="tag ${p === "youtube" ? "yt" : p === "instagram" ? "ig" : "tt"}">${p === "youtube" ? "YouTube" : p === "instagram" ? "Instagram" : "TikTok"}</span>`;
+const scoreCell = s => s == null ? '<span class="mute">–</span>' : `<span class="score ${s >= 3 ? "hot" : ""}">${s.toFixed(1)}x</span>`;
+const link = v => `<a href="${safeUrl(v.url)}" target="_blank" rel="noopener">${esc(v.title || "(no caption)")} <span class="mute">↗</span></a>`;
+const median = a => { a = a.filter(x => x != null).sort((x,y) => x-y); if (!a.length) return null; const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2; };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts ? {method: opts.method || "POST", headers: {"Content-Type": "application/json"}, body: opts.body ? JSON.stringify(opts.body) : undefined} : undefined);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Request failed");
+  return j;
+}
+async function load() { S = await api("/api/state"); render(); }
+
+function sortRows(rows, id, def) {
+  const [k, dir] = sortKey[id] || def;
+  return rows.slice().sort((a, b) => {
+    const x = k.split(".").reduce((o, p) => o?.[p], a), y = k.split(".").reduce((o, p) => o?.[p], b);
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+}
+function th(id, key, label, cls) { return `<th class="${cls || ""}" data-sort="${id}|${key}">${label}</th>`; }
+
+function videoTable(id, rows, opts = {}) {
+  if (!rows.length) return `<div class="empty">${opts.empty || "Nothing here yet."}</div>`;
+  const ig = rows.some(v => v.extra && (v.extra.reach != null || v.extra.saved != null));
+  rows = sortRows(rows, id, opts.sort || ["published", -1]);
+  return `<div class="scroll"><table><thead><tr>${th(id,"published","Date")}${opts.who ? th(id,"handle","Creator") : ""}${th(id,"title","Video")}${th(id,"metric",opts.metricLabel || "Views","n")}${th(id,"likes","Likes","n")}${th(id,"comments","Comments","n")}${ig ? th(id,"extra.reach","Reach","n") + th(id,"extra.saved","Saves","n") + th(id,"extra.shares","Shares","n") : ""}${opts.noScore ? "" : th(id,"score","vs normal","n")}</tr></thead><tbody>` +
+    rows.slice(0, opts.limit || 300).map(v => `<tr class="go" data-url="${safeUrl(v.url)}" title="Open this video in a new tab"><td class="mute" style="white-space:nowrap">${esc(v.published || "–")}</td>${opts.who ? `<td style="white-space:nowrap">${ptag(v.platform)}${esc(v.extra?.channel || "@" + v.handle)}</td>` : ""}<td class="t">${opts.who ? "" : ptag(v.platform)}<span class="tag">${esc(v.kind || "")}</span>${link(v)}</td><td class="n">${num(v.metric ?? v.views)}${v.views == null && v.likes != null && v.metric != null ? ' <span class="mute">likes</span>' : ""}</td><td class="n">${num(v.likes)}</td><td class="n">${num(v.comments)}</td>${ig ? `<td class="n">${num(v.extra?.reach)}</td><td class="n">${num(v.extra?.saved)}</td><td class="n">${num(v.extra?.shares)}</td>` : ""}${opts.noScore ? "" : `<td class="n">${scoreCell(v.score)}</td>`}</tr>`).join("") + "</tbody></table></div>";
+}
+
+function viewMe() {
+  const mine = S.creators.filter(c => c.is_me);
+  if (!mine.length) return `<div class="note">Add your own accounts first: open <b>Creators</b>, type your handle, and tick “this is my account”.</div>`;
+  let h = "";
+  if (mine.some(c => c.platform === "instagram") && !S.ig_ready) h += `<div class="note">Instagram is not connected yet. Follow the steps in <b>radar/README.md</b> once, then refresh.</div>`;
+  let all = S.videos.filter(v => v.is_me);
+  const kinds = [...new Set(all.map(v => v.platform))];
+  h += `<div class="cards">` + mine.map(c => {
+    const vs = all.filter(v => v.creator_id === c.id).sort((a, b) => (b.published || "").localeCompare(a.published || ""));
+    const last5 = median(vs.slice(0, 5).map(v => v.metric)), best = vs.slice().sort((a, b) => (b.metric || 0) - (a.metric || 0))[0];
+    const trend = c.median && last5 != null ? last5 / c.median : null;
+    return `<div class="card"><div class="k">${ptag(c.platform)}@${esc(c.handle)}</div><div class="v">${num(c.median)}</div><div class="s">normal ${vs.some(v => v.views != null) ? "views" : "likes"} per video · ${c.videos} videos${c.followers ? " · " + num(c.followers) + " followers" : ""}</div><div class="s">${trend == null ? "" : `Last 5: <b style="color:${trend >= 1 ? "var(--good)" : "var(--warn)"}">${trend.toFixed(1)}x</b> your normal`}</div><div class="s">${best ? "Best: " + link(best) + " (" + num(best.metric) + ")" : ""}</div>${c.last_error ? `<div class="err">${esc(c.last_error)}</div>` : ""}</div>`;
+  }).join("") + `</div>`;
+  if (kindFilter !== "all") all = all.filter(v => v.platform === kindFilter);
+  if (period === "30") { const d = new Date(S.today); d.setDate(d.getDate() - 30); const since = d.toISOString().slice(0, 10); all = all.filter(v => v.published && v.published >= since); }
+  const sum = k => all.reduce((t, v) => t + (v[k] || 0), 0);
+  const where = kindFilter === "all" ? "YouTube + Instagram" : kindFilter === "youtube" ? "YouTube" : "Instagram", span = period === "30" ? "last 30 days" : "lifetime";
+  h += `<div class="panel"><h2><span class="grow">Totals · ${where} · ${span}</span><span class="seg">${["all", ...kinds].map(k => `<button data-kind="${k}" class="${kindFilter === k ? "on" : ""}">${k === "all" ? "Both" : k === "youtube" ? "YouTube" : "Instagram"}</button>`).join("")}</span><span class="seg"><button data-period="30" class="${period === "30" ? "on" : ""}">Last 30 days</button><button data-period="life" class="${period === "life" ? "on" : ""}">Lifetime</button></span></h2><div class="pad"><div class="cards" style="margin:0">${[["Views", sum("views")], ["Likes", sum("likes")], ["Comments", sum("comments")], ["Videos", all.length]].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${k === "Videos" ? v : num(v)}</div><div class="s">${k === "Videos" ? "posted in this period" : "on videos posted in this period"}</div></div>`).join("")}</div></div></div>`;
+  const sorts = [["published", "Newest"], ["views", "Most views"], ["likes", "Most likes"], ["comments", "Most comments"], ["score", "Best vs normal"]];
+  h += `<div class="panel"><h2><span class="grow">My videos (${all.length})</span><label class="status">Sort by <select id="meSort">${sorts.map(([k, l]) => `<option value="${k}" ${meSort === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></h2>${videoTable("me", all, {empty: "No videos in this selection. Press “Refresh numbers”, or switch to Lifetime."})}</div>`;
+  return h;
+}
+
+function viewCreators() {
+  let h = `<div class="panel"><h2>Add a creator</h2><div class="pad"><form class="row" id="add"><select name="platform"><option value="youtube">YouTube</option><option value="instagram">Instagram</option></select><input name="handle" placeholder="@handle or profile link" size="34" required><label><input type="checkbox" name="is_me"> this is my account</label><button class="btn">Add</button><span class="err" id="addErr"></span></form></div></div>`;
+  const rows = sortRows(S.creators.filter(c => !creatorQ || (c.name + " " + c.handle).toLowerCase().includes(creatorQ.toLowerCase())), "cr", ["is_me", -1]);
+  h += `<div class="panel"><h2><span class="grow">Tracked creators (${S.creators.length})</span><input id="creatorQ" placeholder="Filter by name" value="${esc(creatorQ)}"></h2>` + (rows.length ? `<div class="scroll"><table><thead><tr>${th("cr","handle","Creator")}${th("cr","followers","Followers","n")}${th("cr","videos","Videos","n")}${th("cr","median","Normal views","n")}${th("cr","outliers","Outliers","n")}${th("cr","last_ok","Last refreshed")}<th></th></tr></thead><tbody>` + rows.map(c => `<tr><td>${ptag(c.platform)}<a href="#" data-pick="${c.id}"><b>${esc(c.name || "@" + c.handle)}</b></a> ${c.is_me ? '<span class="tag me">me</span>' : ""}${c.last_error ? `<div class="err">${esc(c.last_error)}</div>` : ""}</td><td class="n">${num(c.followers)}</td><td class="n">${c.videos}</td><td class="n">${num(c.median)}</td><td class="n">${c.outliers || "–"}</td><td class="mute">${esc((c.last_ok || "never").replace("T", " "))}</td><td class="n"><button class="btn ghost small" data-del="${c.id}" data-name="${esc(c.name || c.handle)}">Remove</button></td></tr>`).join("") + `</tbody></table></div>` : `<div class="empty">No creators yet. Add your own accounts and a few creators in your niche.</div>`) + `</div>`;
+  const c = S.creators.find(c => c.id === pick);
+  if (c) h += `<div class="panel"><h2>${esc(c.name || "@" + c.handle)} — videos</h2>${videoTable("pick", S.videos.filter(v => v.creator_id === c.id), {sort: ["score", -1]})}</div>`;
+  return h;
+}
+
+function viewTrending() {
+  const rows = days === 7 ? S.trending7 : S.trending30;
+  let h = `<div class="panel"><h2><span class="grow">Outliers from creators you track</span><span class="seg"><button data-days="7" class="${days === 7 ? "on" : ""}">7 days</button><button data-days="30" class="${days === 30 ? "on" : ""}">30 days</button></span></h2>${videoTable("tr", rows, {who: true, sort: ["score", -1], empty: "No video beat 3x its creator’s normal in this window. Track more creators or try 30 days."})}</div>`;
+  h += `<div class="panel"><h2>Search YouTube for a topic</h2><div class="pad"><form class="row" id="search"><input name="q" placeholder="e.g. nvidia data centre" size="40" required value="${esc(search?.q || "")}"><button class="btn">Search</button><span class="status" id="searchMsg">${search?.msg ? esc(search.msg) : ""}</span></form></div>${search?.results ? videoTable("se", search.results.map(v => ({...v, metric: v.views, handle: v.extra?.channel || "", platform: "youtube"})), {who: true, noScore: true, sort: ["metric", -1]}) : ""}</div>`;
+  return h;
+}
+
+function viewIdeas() {
+  if (!S.ideas.length) return `<div class="empty">No ideas yet. Track at least a few creators in your niche and refresh; ideas come from their videos that did 3x or more of their normal in the last 60 days.</div>`;
+  return `<div class="note">Words and phrases that keep showing up in videos doing 3x or more of their creator’s normal (last 60 days). For hooks in your gold-reel pattern, ask Claude in this project: “pitch topics from the radar”.</div><div class="panel">` + S.ideas.map(i => `<div class="idea"><b>${esc(i.term)}</b> <span class="tag">${i.count} video${i.count > 1 ? "s" : ""}</span><span class="tag">${i.creators.length} creator${i.creators.length > 1 ? "s" : ""}</span>${i.recent ? `<span class="tag me">${i.recent} in last 14 days</span>` : ""}${i.done ? `<span class="tag warn">you covered: ${esc(i.covered_by.join(", "))}</span>` : ""}<ul>${i.examples.map(v => `<li>${scoreCell(v.score)} ${link(v)} <span class="mute">@${esc(v.handle)} · ${num(v.metric)} · ${esc(v.published || "")}</span></li>`).join("")}</ul></div>`).join("") + `</div>`;
+}
+
+function viewNews() {
+  const when = n => n.published ? new Date(n.published).toLocaleString([], {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "";
+  const card = n => `<div class="idea"><div><span class="tag">${esc(n.source)}</span><span class="mute">${esc(when(n))}</span>${n.covered ? ` <span class="tag warn">you covered: ${esc(n.covered)}</span>` : ""}</div><b><a href="${safeUrl(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a></b><div class="mute">${esc(n.summary || "")}</div>${n.pick ? `<div class="note" style="margin:8px 0 0"><b>Why this one:</b> ${esc(n.pick)}</div>` : ""}</div>`;
+  const picks = S.news.filter(n => n.pick), rest = S.news.filter(n => !n.pick);
+  let h = `<div class="note">The 20 newest stories closest to your niche, from BBC, TechCrunch, CNBC, The Verge, Ars Technica, Wired, Economic Times, Mint, The Register, IEEE Spectrum and Rest of World. New stories push old ones out. It updates every morning at 8 and whenever you press the button. To turn one into a reel, tell Claude in this project: “make a reel from news” or paste the article link.</div>`;
+  h += `<div class="panel"><h2><span class="grow">Claude’s picks for a reel</span><button class="btn ghost small" id="newsNow">Fetch news now</button></h2>${picks.length ? picks.map(card).join("") : `<div class="empty">No picks yet. They are written by the 8 AM check.</div>`}</div>`;
+  h += `<div class="panel"><h2>Latest in your niche (${rest.length})</h2>${rest.length ? rest.map(card).join("") : `<div class="empty">No news stored yet. Press “Fetch news now”.</div>`}</div>`;
+  return h;
+}
+
+function viewComments() {
+  let h = `<div class="note">New comments on your latest videos. Reply drafts are written by the scheduled Claude check and appear here; nothing is posted for you. Copy a draft, open the video, paste, then mark it done.</div><div class="panel"><h2><span class="grow">Waiting for a reply (${S.comments.length})</span><button class="btn ghost small" id="checkC">Check comments now</button></h2>`;
+  if (!S.comments.length) return h + `<div class="empty">No open comments.</div></div>`;
+  return h + S.comments.map((c, i) => `<div class="cmt"><div>${ptag(c.platform)}<b>${esc(c.author)}</b> <span class="mute">on <a href="${safeUrl(c.video_url)}" target="_blank" rel="noopener">${esc(c.video_title || "video")}</a> · ${esc((c.published || "").replace("T", " "))}</span></div><div class="q">${esc(c.text)}</div><textarea data-i="${i}" placeholder="No draft yet. It will be written at the next scheduled check, or type your own.">${esc(c.draft || "")}</textarea><div class="row"><button class="btn small" data-copy="${i}">Copy reply</button><a class="btn ghost small" href="${safeUrl(c.video_url)}" target="_blank" rel="noopener">Open video</a><button class="btn ghost small" data-save="${i}">Save draft</button><button class="btn ghost small" data-cact="done" data-i="${i}">Mark replied</button><button class="btn ghost small" data-cact="skip" data-i="${i}">Skip</button><span class="status" data-msg="${i}"></span></div></div>`).join("") + `</div>`;
+}
+
+function render() {
+  document.getElementById("nav").innerHTML = TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}${k === "comments" && S.comments.length ? ` (${S.comments.length})` : ""}</button>`).join("");
+  document.getElementById("main").innerHTML = {me: viewMe, creators: viewCreators, trending: viewTrending, ideas: viewIdeas, news: viewNews, comments: viewComments}[tab]();
+  document.querySelectorAll('#main a[href^="http"]').forEach(x => { x.target = "_blank"; x.rel = "noopener"; });
+}
+
+// Every outside link, anywhere in the app, opens in a new tab (the dashboard itself never navigates away).
+document.addEventListener("click", e => {
+  const a = e.target.closest("a[href]");
+  if (!a || e.defaultPrevented) return;
+  const href = a.getAttribute("href");
+  if (!href || href === "#" || href.startsWith("javascript:")) return;
+  if (/^https?:\/\//i.test(a.href) && new URL(a.href).origin !== location.origin) {
+    e.preventDefault();
+    window.open(a.href, "_blank", "noopener");
+  }
+}, true);
+// Clicking anywhere on a video row opens that Short / reel / video in a new tab.
+document.addEventListener("click", e => {
+  const row = e.target.closest("tr.go");
+  if (row && !e.target.closest("a,button,input,select,textarea") && row.dataset.url !== "#") window.open(row.dataset.url, "_blank", "noopener");
+});
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-tab],[data-sort],[data-pick],[data-del],[data-days],[data-kind],[data-period],[data-copy],[data-save],[data-cact],#refresh,#checkC,#newsNow");
+  if (!t) return;
+  if (t.dataset.tab) { tab = t.dataset.tab; try { localStorage.setItem("radar.tab", tab); } catch (e) {} return render(); }
+  if (t.dataset.sort) { const [id, k] = t.dataset.sort.split("|"); const cur = sortKey[id]; sortKey[id] = [k, cur && cur[0] === k ? -cur[1] : -1]; return render(); }
+  if (t.dataset.pick) { e.preventDefault(); pick = +t.dataset.pick; return render(); }
+  if (t.dataset.days) { days = +t.dataset.days; return render(); }
+  if (t.dataset.kind) { kindFilter = t.dataset.kind; return render(); }
+  if (t.dataset.period) { period = t.dataset.period; return render(); }
+  if (t.id === "newsNow") { await api("/api/news/refresh", {}); return poll(); }
+  if (t.dataset.del) { if (confirm(`Stop tracking @${t.dataset.name}? Its saved numbers are removed.`)) { await api("/api/creators/" + t.dataset.del, {method: "DELETE"}); await load(); } return; }
+  if (t.id === "refresh") { await api("/api/refresh", {}); return poll(); }
+  if (t.id === "checkC") { await api("/api/comments/check", {}); return poll(); }
+  const i = t.dataset.copy ?? t.dataset.save ?? t.dataset.i, c = S.comments[i], box = document.querySelector(`textarea[data-i="${i}"]`), msg = document.querySelector(`[data-msg="${i}"]`);
+  if (!c) return;
+  try {
+    if (t.dataset.copy != null) { await navigator.clipboard.writeText(box.value); msg.textContent = "Copied"; }
+    else if (t.dataset.save != null) { await api("/api/comments", {body: {platform: c.platform, comment_id: c.comment_id, action: "draft", text: box.value}}); c.draft = box.value; msg.textContent = "Saved"; }
+    else { await api("/api/comments", {body: {platform: c.platform, comment_id: c.comment_id, action: t.dataset.cact}}); await load(); }
+  } catch (err) { msg.textContent = err.message; }
+});
+
+document.addEventListener("change", e => { if (e.target.id === "meSort") { meSort = e.target.value; sortKey.me = [meSort, -1]; render(); } });
+document.addEventListener("input", e => { if (e.target.id === "creatorQ") { creatorQ = e.target.value; render(); const i = document.getElementById("creatorQ"); i.focus(); i.setSelectionRange(creatorQ.length, creatorQ.length); } });
+document.addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  if (e.target.id === "add") {
+    try { await api("/api/creators", {body: {platform: f.get("platform"), handle: f.get("handle"), is_me: !!f.get("is_me")}}); await load(); document.getElementById("status").textContent = "Added. Press “Refresh numbers” to pull their videos."; }
+    catch (err) { document.getElementById("addErr").textContent = err.message; }
+  }
+  if (e.target.id === "search") {
+    search = {q: f.get("q"), msg: "Searching…"}; render();
+    try { search.results = (await api("/api/search?q=" + encodeURIComponent(search.q))).results; search.msg = search.results.length + " results"; }
+    catch (err) { search.msg = err.message; }
+    render();
+  }
+});
+
+// After you open a video from the Comments tab and come back, re-check so answered comments drop off by themselves.
+let openedFromComments = false;
+document.addEventListener("click", e => { if (tab === "comments" && e.target.closest('a[target="_blank"]')) openedFromComments = true; }, true);
+async function recheck() {
+  if (!openedFromComments || document.hidden) return;
+  openedFromComments = false;
+  try { await api("/api/comments/check", {}); poll(); } catch (e) {}
+}
+window.addEventListener("focus", recheck);
+document.addEventListener("visibilitychange", recheck);
+
+async function poll() {
+  const b = document.getElementById("refresh"), st = document.getElementById("status");
+  for (;;) {
+    const j = await api("/api/job");
+    b.disabled = j.running;
+    if (!j.running) {
+      const bad = (j.results || []).filter(r => !r.ok).length, cm = j.comments;
+      st.textContent = j.what ? `Done${j.what === "refresh" ? `: ${j.results.length - bad} of ${j.results.length} creators updated` : ""}${cm ? ` · ${cm.new} new comment${cm.new === 1 ? "" : "s"}${cm.errors.length ? " · comments: " + cm.errors[0] : ""}` : ""}` : "";
+      return load();
+    }
+    st.textContent = "Working: " + (j.current || "…") + (j.total ? ` (${j.done} of ${j.total})` : "");
+    await new Promise(r => setTimeout(r, 1200));
+  }
+}
+load().then(poll).catch(e => { document.getElementById("main").innerHTML = `<div class="empty">Could not load: ${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
