@@ -60,20 +60,17 @@ def _run_job(what):
     con = db.connect(config.DB_PATH)
     env = config.load_env()
     try:
-        if what == "refresh":
-            def progress(res):
-                JOB.update(current="creators", done=res["done"], total=res["total"])
-            JOB["results"] = refresh_all(con, env, on_progress=progress)
-        JOB.update(done=0, total=0)
-        if what in ("refresh", "news"):
-            JOB["current"] = "news"
-            try:
-                news.fetch_and_store(con, config.REPO)
-            except Exception:  # noqa: BLE001 - news must never break a refresh
-                pass
-        if what in ("refresh", "comments"):
-            JOB["current"] = "comments"
+        def progress(res):
+            JOB.update(current="accounts" if what == "mine" else "creators", done=res["done"], total=res["total"])
+        if what == "mine":          # my YouTube + Instagram numbers, then my comments
+            JOB["results"] = refresh_all(con, env, on_progress=progress, only_me=True)
+            JOB.update(current="comments", done=0, total=0)
             JOB["comments"] = comments.check(con, env)
+        elif what == "creators":    # the other tracked creators (trending, topic ideas)
+            JOB["results"] = refresh_all(con, env, on_progress=progress, only_others=True)
+        elif what == "news":
+            JOB["current"] = "news"
+            news.fetch_and_store(con, config.REPO)
     finally:
         JOB["running"] = False
         JOB["current"] = ""
@@ -155,11 +152,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"error": "type a handle or profile link"})
                 return self._send(200, {"id": cid})
             if self.path == "/api/refresh":
-                return self._send(200, {"started": start_job("refresh")})
-            if self.path == "/api/news/refresh":
-                return self._send(200, {"started": start_job("news")})
-            if self.path == "/api/comments/check":
-                return self._send(200, {"started": start_job("comments")})
+                scope = body.get("scope")
+                if scope not in ("mine", "creators", "news"):
+                    return self._send(400, {"error": "unknown refresh"})
+                return self._send(200, {"started": start_job(scope)})
             if self.path == "/api/comments":
                 try:
                     if body.get("action") == "draft":

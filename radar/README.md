@@ -8,7 +8,13 @@ A free, local replacement for the parts of vidIQ used for @zbacktrack: your own 
 bash radar/run.sh
 ```
 
-It opens http://127.0.0.1:8765. Press **Refresh numbers** to pull fresh data. Stop it with Ctrl+C.
+It opens http://127.0.0.1:8765. Nothing refreshes by itself except the 8 AM scheduled job. There is one **Refresh numbers** button, and what it does depends on the tab you are on (the line under it says so):
+
+- **My account** and **Comments:** your YouTube and Instagram numbers, then your comments (about 1 minute).
+- **News:** the news list only (a few seconds).
+- **Creators, Trending, Topic ideas:** all tracked creators (a few minutes).
+
+Stop the dashboard with Ctrl+C.
 
 ## The tabs
 

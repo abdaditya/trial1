@@ -68,6 +68,7 @@ form.row,.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   <nav id="nav"></nav>
   <span class="status" id="status"></span>
   <button class="btn" id="refresh">Refresh numbers</button>
+  <div class="status" id="hint" style="flex-basis:100%;text-align:right"></div>
 </header>
 <main id="main"><div class="empty">Loading…</div></main>
 <script>
@@ -75,6 +76,11 @@ const TABS = [["me","My account"],["creators","Creators"],["trending","Trending"
 let S = null, tab = "me", days = 30, sortKey = {}, pick = null, search = null, kindFilter = "all", period = "life", meSort = "published", creatorQ = "";
 try { tab = localStorage.getItem("radar.tab") || "me"; } catch (e) {}
 
+// One button, and what it refreshes depends on the tab you are on. Nothing refreshes by itself except the 8 AM job.
+const scopeOf = t => ({me: "mine", comments: "mine", news: "news"}[t] || "creators");
+const HINT = {mine: "Refreshes your YouTube + Instagram numbers and checks your comments (about 1 minute).",
+  news: "Refreshes the news list (a few seconds). It also updates every morning at 8.",
+  creators: "Refreshes all tracked creators (a few minutes). It also updates every morning at 8."};
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u || "") ? esc(u) : "#";
 const num = n => n == null ? "–" : n >= 1e6 ? (n/1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e4 ? Math.round(n/1e3) + "k" : n >= 1e3 ? (n/1e3).toFixed(1) + "k" : String(n);
@@ -158,18 +164,19 @@ function viewNews() {
   const card = n => `<div class="idea"><div><span class="tag">${esc(n.source)}</span><span class="mute">${esc(when(n))}</span>${n.covered ? ` <span class="tag warn">you covered: ${esc(n.covered)}</span>` : ""}</div><b><a href="${safeUrl(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a></b><div class="mute">${esc(n.summary || "")}</div>${n.pick ? `<div class="note" style="margin:8px 0 0"><b>Why this one:</b> ${esc(n.pick)}</div>` : ""}</div>`;
   const picks = S.news.filter(n => n.pick), rest = S.news.filter(n => !n.pick);
   let h = `<div class="note">The 20 newest stories closest to your niche, from BBC, TechCrunch, CNBC, The Verge, Ars Technica, Wired, Economic Times, Mint, The Register, IEEE Spectrum and Rest of World. New stories push old ones out. It updates every morning at 8 and whenever you press the button. To turn one into a reel, tell Claude in this project: “make a reel from news” or paste the article link.</div>`;
-  h += `<div class="panel"><h2><span class="grow">Claude’s picks for a reel</span><button class="btn ghost small" id="newsNow">Fetch news now</button></h2>${picks.length ? picks.map(card).join("") : `<div class="empty">No picks yet. They are written by the 8 AM check.</div>`}</div>`;
+  h += `<div class="panel"><h2><span class="grow">Claude’s picks for a reel</span></h2>${picks.length ? picks.map(card).join("") : `<div class="empty">No picks yet. They are written by the 8 AM check.</div>`}</div>`;
   h += `<div class="panel"><h2>Latest in your niche (${rest.length})</h2>${rest.length ? rest.map(card).join("") : `<div class="empty">No news stored yet. Press “Fetch news now”.</div>`}</div>`;
   return h;
 }
 
 function viewComments() {
-  let h = `<div class="note">New comments on your latest videos. Reply drafts are written by the scheduled Claude check and appear here; nothing is posted for you. Copy a draft, open the video, paste, then mark it done.</div><div class="panel"><h2><span class="grow">Waiting for a reply (${S.comments.length})</span><button class="btn ghost small" id="checkC">Check comments now</button></h2>`;
+  let h = `<div class="note">New comments on your latest videos. Reply drafts are written by the scheduled Claude check and appear here; nothing is posted for you. Copy a draft, open the video, paste, then mark it done.</div><div class="panel"><h2><span class="grow">Waiting for a reply (${S.comments.length})</span></h2>`;
   if (!S.comments.length) return h + `<div class="empty">No open comments.</div></div>`;
   return h + S.comments.map((c, i) => `<div class="cmt"><div>${ptag(c.platform)}<b>${esc(c.author)}</b> <span class="mute">on <a href="${safeUrl(c.video_url)}" target="_blank" rel="noopener">${esc(c.video_title || "video")}</a> · ${esc((c.published || "").replace("T", " "))}</span></div><div class="q">${esc(c.text)}</div><textarea data-i="${i}" placeholder="No draft yet. It will be written at the next scheduled check, or type your own.">${esc(c.draft || "")}</textarea><div class="row"><button class="btn small" data-copy="${i}">Copy reply</button><a class="btn ghost small" href="${safeUrl(c.video_url)}" target="_blank" rel="noopener">Open video</a><button class="btn ghost small" data-save="${i}">Save draft</button><button class="btn ghost small" data-cact="done" data-i="${i}">Mark replied</button><button class="btn ghost small" data-cact="skip" data-i="${i}">Skip</button><span class="status" data-msg="${i}"></span></div></div>`).join("") + `</div>`;
 }
 
 function render() {
+  document.getElementById("hint").textContent = HINT[scopeOf(tab)];
   document.getElementById("nav").innerHTML = TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}${k === "comments" && S.comments.length ? ` (${S.comments.length})` : ""}</button>`).join("");
   document.getElementById("main").innerHTML = {me: viewMe, creators: viewCreators, trending: viewTrending, ideas: viewIdeas, news: viewNews, comments: viewComments}[tab]();
   document.querySelectorAll('#main a[href^="http"]').forEach(x => { x.target = "_blank"; x.rel = "noopener"; });
@@ -192,7 +199,7 @@ document.addEventListener("click", e => {
   if (row && !e.target.closest("a,button,input,select,textarea") && row.dataset.url !== "#") window.open(row.dataset.url, "_blank", "noopener");
 });
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-tab],[data-sort],[data-pick],[data-del],[data-days],[data-kind],[data-period],[data-copy],[data-save],[data-cact],#refresh,#checkC,#newsNow");
+  const t = e.target.closest("[data-tab],[data-sort],[data-pick],[data-del],[data-days],[data-kind],[data-period],[data-copy],[data-save],[data-cact],#refresh");
   if (!t) return;
   if (t.dataset.tab) { tab = t.dataset.tab; try { localStorage.setItem("radar.tab", tab); } catch (e) {} return render(); }
   if (t.dataset.sort) { const [id, k] = t.dataset.sort.split("|"); const cur = sortKey[id]; sortKey[id] = [k, cur && cur[0] === k ? -cur[1] : -1]; return render(); }
@@ -200,10 +207,8 @@ document.addEventListener("click", async e => {
   if (t.dataset.days) { days = +t.dataset.days; return render(); }
   if (t.dataset.kind) { kindFilter = t.dataset.kind; return render(); }
   if (t.dataset.period) { period = t.dataset.period; return render(); }
-  if (t.id === "newsNow") { await api("/api/news/refresh", {}); return poll(); }
   if (t.dataset.del) { if (confirm(`Stop tracking @${t.dataset.name}? Its saved numbers are removed.`)) { await api("/api/creators/" + t.dataset.del, {method: "DELETE"}); await load(); } return; }
-  if (t.id === "refresh") { await api("/api/refresh", {}); return poll(); }
-  if (t.id === "checkC") { await api("/api/comments/check", {}); return poll(); }
+  if (t.id === "refresh") { await api("/api/refresh", {body: {scope: scopeOf(tab)}}); return poll(); }
   const i = t.dataset.copy ?? t.dataset.save ?? t.dataset.i, c = S.comments[i], box = document.querySelector(`textarea[data-i="${i}"]`), msg = document.querySelector(`[data-msg="${i}"]`);
   if (!c) return;
   try {
@@ -230,17 +235,6 @@ document.addEventListener("submit", async e => {
   }
 });
 
-// After you open a video from the Comments tab and come back, re-check so answered comments drop off by themselves.
-let openedFromComments = false;
-document.addEventListener("click", e => { if (tab === "comments" && e.target.closest('a[target="_blank"]')) openedFromComments = true; }, true);
-async function recheck() {
-  if (!openedFromComments || document.hidden) return;
-  openedFromComments = false;
-  try { await api("/api/comments/check", {}); poll(); } catch (e) {}
-}
-window.addEventListener("focus", recheck);
-document.addEventListener("visibilitychange", recheck);
-
 async function poll() {
   const b = document.getElementById("refresh"), st = document.getElementById("status");
   for (;;) {
@@ -248,7 +242,12 @@ async function poll() {
     b.disabled = j.running;
     if (!j.running) {
       const bad = (j.results || []).filter(r => !r.ok).length, cm = j.comments;
-      st.textContent = j.what ? `Done${j.what === "refresh" ? `: ${j.results.length - bad} of ${j.results.length} creators updated` : ""}${cm ? ` · ${cm.new} new comment${cm.new === 1 ? "" : "s"}${cm.errors.length ? " · comments: " + cm.errors[0] : ""}` : ""}` : "";
+      const parts = [];
+      if (j.what === "mine") parts.push(`Your accounts updated${bad ? " (" + bad + " failed)" : ""}`);
+      if (j.what === "creators") parts.push(`${j.results.length - bad} of ${j.results.length} creators updated`);
+      if (j.what === "news") parts.push("News updated");
+      if (cm) parts.push(`${cm.new} new comment${cm.new === 1 ? "" : "s"}${cm.errors.length ? " · " + cm.errors[0] : ""}`);
+      st.textContent = parts.join(" · ");
       return load();
     }
     st.textContent = "Working: " + (j.current || "…") + (j.total ? ` (${j.done} of ${j.total})` : "");

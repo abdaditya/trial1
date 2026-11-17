@@ -104,3 +104,20 @@ class TestComments(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScopes(unittest.TestCase):
+    def test_only_others_and_only_me(self):
+        con = db.connect(":memory:")
+        db.add_creator(con, "youtube", "me", True)
+        db.add_creator(con, "youtube", "other")
+        seen = []
+
+        def f(c, env, known):
+            seen.append(c["handle"])
+            return []
+        refresh_all(con, {}, {"youtube": f}, only_others=True)
+        self.assertEqual(seen, ["other"])
+        seen.clear()
+        refresh_all(con, {}, {"youtube": f}, only_me=True)
+        self.assertEqual(seen, ["me"])

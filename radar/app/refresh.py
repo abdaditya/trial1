@@ -36,12 +36,12 @@ def friendly(platform, e):
     return msg[:240] or e.__class__.__name__
 
 
-def refresh_all(con, env, fetchers=None, now=None, on_progress=None, workers=4, only_me=False):
+def refresh_all(con, env, fetchers=None, now=None, on_progress=None, workers=6, only_me=False, only_others=False):
     """Fetch creators a few at a time (network), save one at a time (database)."""
     fetchers = fetchers or FETCHERS
     now = now or datetime.now().isoformat(timespec="seconds")
     jobs = [(dict(c), db.known_video_ids(con, c["id"], dated_only=True)) for c in db.list_creators(con)
-            if c["is_me"] or not only_me]
+            if (c["is_me"] or not only_me) and (not c["is_me"] or not only_others)]
     total, done = len(jobs), [0]
 
     def work(job):
