@@ -18,7 +18,9 @@ class TestState(unittest.TestCase):
             s = build_state(con, repo, date(2026, 11, 16))
         for k in ("creators", "videos", "trending7", "trending30", "ideas", "comments", "news", "ig_ready"):
             self.assertIn(k, s)
-        self.assertEqual(sorted(v["score"] for v in s["videos"])[-1], 10.0)
+        self.assertEqual(s["videos"], [])   # other creators load on click
+        from app.server import scored_videos
+        self.assertEqual(sorted(v["score"] for v in scored_videos(con))[-1], 10.0)
         self.assertEqual(len(s["trending7"]), 1)
         self.assertEqual((s["creators"][0]["median"], s["creators"][0]["followers"], s["creators"][0]["outliers"]),
                          (10000, 5000, 1))

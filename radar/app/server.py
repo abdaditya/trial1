@@ -17,8 +17,7 @@ JOB = {"running": False, "what": "", "current": "", "results": [], "comments": N
 JOB_LOCK = threading.Lock()
 
 
-def build_state(con, repo_root, today, env=None):
-    env = env or {}
+def scored_videos(con):
     videos = []
     for r in db.latest_videos(con):
         v = dict(r)
@@ -29,7 +28,12 @@ def build_state(con, repo_root, today, env=None):
         if not v["is_me"]:
             v["extra"] = {k: v["extra"][k] for k in ("channel", "channel_follower_count") if k in v["extra"]}
         videos.append(v)
-    scored = analyze.score_videos(videos)
+    return analyze.score_videos(videos)
+
+
+def build_state(con, repo_root, today, env=None):
+    env = env or {}
+    scored = scored_videos(con)
     # News desks post about everything; from them keep only videos whose title is on the niche.
     busy = analyze.busy_creators(scored)
     relevant = [v for v in scored if v["creator_id"] not in busy
@@ -47,7 +51,8 @@ def build_state(con, repo_root, today, env=None):
                                if v["extra"].get("channel_follower_count")), None)
         c["outliers"] = sum(1 for v in mine if (v["score"] or 0) >= analyze.OUTLIER)
         creators.append(c)
-    return {"today": today.isoformat(), "creators": creators, "videos": scored,
+    return {"today": today.isoformat(), "creators": creators,
+            "videos": [v for v in scored if v["is_me"]],   # other creators' videos load on click
             "trending7": analyze.trending(relevant, 7, today, min_metric=MIN_VIEWS)[:150],
             "trending30": analyze.trending(relevant, 30, today, min_metric=MIN_VIEWS)[:150],
             "ideas": analyze.topic_ideas(relevant, done, today, min_metric=MIN_VIEWS)[:60],
@@ -119,6 +124,13 @@ class Handler(BaseHTTPRequestHandler):
             con = db.connect(config.DB_PATH)
             try:
                 return self._send(200, build_state(con, config.REPO, date.today(), config.load_env()))
+            finally:
+                con.close()
+        if url.path == "/api/creator":
+            cid = urllib.parse.parse_qs(url.query).get("id", [""])[0]
+            con = db.connect(config.DB_PATH)
+            try:
+                return self._send(200, {"videos": [v for v in scored_videos(con) if str(v["creator_id"]) == cid]})
             finally:
                 con.close()
         if url.path == "/api/job":

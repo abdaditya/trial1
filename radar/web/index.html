@@ -95,7 +95,8 @@ async function api(path, opts) {
   if (!r.ok) throw new Error(j.error || "Request failed");
   return j;
 }
-async function load() { S = await api("/api/state"); render(); }
+let pickVideos = {};
+async function load() { pickVideos = {}; S = await api("/api/state"); render(); }
 
 function sortRows(rows, id, def) {
   const [k, dir] = sortKey[id] || def;
@@ -143,7 +144,7 @@ function viewCreators() {
   const rows = sortRows(S.creators.filter(c => !creatorQ || (c.name + " " + c.handle).toLowerCase().includes(creatorQ.toLowerCase())), "cr", ["is_me", -1]);
   h += `<div class="panel"><h2><span class="grow">Tracked creators (${S.creators.length})</span><input id="creatorQ" placeholder="Filter by name" value="${esc(creatorQ)}"></h2>` + (rows.length ? `<div class="scroll"><table><thead><tr>${th("cr","handle","Creator")}${th("cr","followers","Followers","n")}${th("cr","videos","Videos","n")}${th("cr","median","Normal views","n")}${th("cr","outliers","Outliers","n")}${th("cr","last_ok","Last refreshed")}<th></th></tr></thead><tbody>` + rows.map(c => `<tr><td>${ptag(c.platform)}<a href="#" data-pick="${c.id}"><b>${esc(c.name || "@" + c.handle)}</b></a> ${c.is_me ? '<span class="tag me">me</span>' : ""}${c.last_error ? `<div class="err">${esc(c.last_error)}</div>` : ""}</td><td class="n">${num(c.followers)}</td><td class="n">${c.videos}</td><td class="n">${num(c.median)}</td><td class="n">${c.outliers || "–"}</td><td class="mute">${esc((c.last_ok || "never").replace("T", " "))}</td><td class="n"><button class="btn ghost small" data-del="${c.id}" data-name="${esc(c.name || c.handle)}">Remove</button></td></tr>`).join("") + `</tbody></table></div>` : `<div class="empty">No creators yet. Add your own accounts and a few creators in your niche.</div>`) + `</div>`;
   const c = S.creators.find(c => c.id === pick);
-  if (c) h += `<div class="panel"><h2>${esc(c.name || "@" + c.handle)} — videos</h2>${videoTable("pick", S.videos.filter(v => v.creator_id === c.id), {sort: ["score", -1]})}</div>`;
+  if (c) h += `<div class="panel"><h2>${esc(c.name || "@" + c.handle)} — videos</h2>${pickVideos[c.id] ? "" : `<div class="empty">Loading…</div>`}${videoTable("pick", (pickVideos[c.id] || []), {sort: ["score", -1]})}</div>`;
   return h;
 }
 
@@ -203,7 +204,7 @@ document.addEventListener("click", async e => {
   if (!t) return;
   if (t.dataset.tab) { tab = t.dataset.tab; try { localStorage.setItem("radar.tab", tab); } catch (e) {} return render(); }
   if (t.dataset.sort) { const [id, k] = t.dataset.sort.split("|"); const cur = sortKey[id]; sortKey[id] = [k, cur && cur[0] === k ? -cur[1] : -1]; return render(); }
-  if (t.dataset.pick) { e.preventDefault(); pick = +t.dataset.pick; return render(); }
+  if (t.dataset.pick) { e.preventDefault(); pick = +t.dataset.pick; render(); if (!pickVideos[pick]) { const id = pick; pickVideos[id] = (await api("/api/creator?id=" + id)).videos; render(); } return; }
   if (t.dataset.days) { days = +t.dataset.days; return render(); }
   if (t.dataset.kind) { kindFilter = t.dataset.kind; return render(); }
   if (t.dataset.period) { period = t.dataset.period; return render(); }
